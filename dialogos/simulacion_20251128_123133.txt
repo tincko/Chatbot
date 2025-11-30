@@ -1,0 +1,76 @@
+===== INICIO DE SIMULACIÓN =====
+Fecha/Hora: 2025-11-28 12:31:33.587738
+================================================================================
+
+ MODELO PACIENTE: openai/gpt-oss-20b
+
+ MODELO PSICO: deepseek/deepseek-r1-0528-qwen3-8b
+
+
+temperature : 0.7
+
+top_p : 0.9
+
+top_k : 40
+
+max_tokens : 200
+
+presence_penalty : 0.1
+
+frequency_penalty : 0.2
+
+
+################################################################################
+Paciente: carlos_68 - Carlos S.
+################################################################################
+
+20251128_123133 : [Psicólogo - Inicio] Hola Carlos, soy tu psicólogo. ¿Cómo venís llevando el tema de tomar las pastillas del trasplante a horario?
+20251128_123238 :  [Paciente]-------------------------------------
+
+Hola doctor.
+
+La verdad es que sigo con la rutina que me dijo mi esposa, pero a veces me olvido cuando estoy solo y no tengo el recordatorio del celular porque se lo dejo en casa. Cuando llego al trabajo o salgo de compras me pasa que se me cae la mano y no recuerdo tomar Tacrolimus ni MMF. Me siento un poco frustrado porque sé que es importante, pero mi memoria está lenta.
+
+Cuando estoy con ella sí logro tomarlo a tiempo. A veces me recuerda con una voz amable: “Carlos, ya son las 8 am, toma tu pastilla”. Eso ayuda mucho. También intenté poner el frasco en la mesa de la cocina y dibujar un dibujo grande encima para que lo vea al pasar por allí, pero todavía me olvido cuando estoy distraído mirando mi celular.
+
+¿Alguna idea
+20251128_123335 : [Psicólogo]-------------------------------------
+
+<think>
+Primero, necesito analizar internamente lo que dice el paciente basándome en el modelo COM-B, pero sin mencionarlo directamente. El paciente está hablando sobre problemas para recordar tomar sus medicamentos Tacrolimus y MMF cuando está solo, olvidando porque no tiene el recordatorio del celular o se lo lleva a casa. Cuando está con su esposa, recuerda mejor.
+
+**ANÁLISIS INTERNO:**
+
+- **CAPACITY:** Parece tener dificultades de memoria (olvidos), lo que limita su capacidad para seguir la rutina sin apoyo externo.
+  
+- **OPPORTUNITY:** El entorno juega un papel importante; cuando está solo, no hay el mismo tipo de recordatorio automático. La carga emocional y el estrés diario podrían afectar sus hábitos. 
+
+- **MOTIVATION:** Muestra frustración porque sabe que es importante tomar
+20251128_123435 :  [Paciente]-------------------------------------
+
+¡Hola! Gracias por preguntar.
+
+Cuando estoy solo, me pasa que mi memoria se le cae un poco y no recuerdo las pastillas; a veces olvido el Tacrolimus o los MMF antes de volver de la tienda o después de sentarme en el sofá. Cuando llega la hora, me siento mal porque sé que necesito tomarlas, pero simplemente se me olvida.
+
+Con mi esposa todo es diferente: ella me llama por teléfono cuando son las 8 am y me recuerda con una voz tranquila “toma tu pastilla”, y también tiene un frasco en el mostrador de la cocina donde yo siempre paso. Eso hace que no sea tan difícil recordar. Cuando estamos juntos, casi nunca olvido.
+
+¿Algún consejo para mejorar cuando estoy solo? Me gustaría poder hacerlo sin depender tanto de ella.
+20251128_123527 : [Psicólogo]-------------------------------------
+
+<think>
+Vamos a analizar internamente lo que dice el paciente:
+
+- Tiene problemas con la memoria al estar solo (CAPACITY).
+- La oportunidad cambia con su entorno; depende del apoyo de su esposa para recordar.
+- Su motivación está presente, ya que cuando se siente mal lo recuerda, pero necesita estrategias prácticas.
+
+Ahora, debo responderle de manera cálida y empática:
+
+1. **Agradecerlo:** Por compartir su situación y mostrar interés en mejorar.
+2. **Empatizar:** Reconocer la dificultad que tiene al estar solo sin el apoyo directo.
+3. **Micro-nudge práctico:** Proponer un pequeño cambio o idea concreta.
+
+Posible respuesta:
+
+- Aceptar su frustración: "Entiendo, es difícil recordar cuando no hay ese apoyo".
+- Idea sencilla: Podría sugerirle

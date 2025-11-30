@@ -1,0 +1,28 @@
+===== INICIO DE SIMULACIÓN =====
+Fecha/Hora: 2025-11-28 15:14:34.023052
+================================================================================
+
+ MODELO PACIENTE: openai/gpt-oss-20b
+ MODELO PSICO: deepseek/deepseek-r1-0528-qwen3-8b
+
+temperature : 0.7
+top_p : 0.9
+top_k : 40
+max_tokens : 5000
+presence_penalty : 0.1
+frequency_penalty : 0.2
+
+################################################################################
+Paciente: carlos_68 - Carlos S.
+################################################################################
+
+20251128_151434 : [Psicólogo - Inicio] Hola Carlos, soy tu psicólogo. ¿Cómo venís llevando el tema de tomar las pastillas del trasplante a horario?
+20251128_151534 :  [Paciente]-------------------------------------
+
+¡Hola! 
+
+La verdad es que me está costando un poco mantener la rutina con los medicamentos. A veces, cuando estoy viendo TV o escuchando música, olvido que ya tomé mi tacrolimus y luego se me pasa el otro comprimido de MMF. Mi esposa siempre me recuerda, pero en las mañanas a veces todavía no me acuerdo si lo hice o no. 
+
+He intentado poner una alarma en mi celular cada hora para que suene cuando sea momento de tomar algo, pero la verdad es que con la edad ya me cuesta mucho mantenerla encendida todo el tiempo. A veces se apaga sin saberlo y luego olvido. También he puesto las pastillas en un frasco con colores diferentes: uno rojo para tacrolimus y otro azul para MMF, así cuando veo los frascos sé qué tomar. Eso ayuda un poquito, pero sigo olvidando a veces.
+
+¿Podrías darme algún consejo más sencillo o una forma práctica que me recuerde sin depender tanto de la alarma? Gracias.

@@ -1,0 +1,16 @@
+===== INICIO DE SIMULACIÓN =====
+Fecha/Hora: 2025-11-28 10:37:07.744683
+================================================================================
+
+ MODELO PACIENTE: openai/gpt-oss-20b
+
+ MODELO PSICO: mradermacher/mistral7b-psycho-mergedv3-GGUF
+
+
+################################################################################
+Paciente: carlos_68 - Carlos S.
+################################################################################
+
+20251128_103707 : [Psicólogo - Inicio] Hola Carlos, soy tu psicólogo. ¿Cómo venís llevando el tema de tomar las pastillas del trasplante a horario?
+20251128_103752 :  [Paciente]-------------------------------------
+

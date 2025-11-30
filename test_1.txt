@@ -1,0 +1,332 @@
+===== TURNO 1 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Gracias por compartir contigo lo que te está pasando. Me parece que encontrar un horario adecuado para la medicación es importante. Podrías probar establecer un recordatorio en tu teléfono para que no te olvides, esto puede ayudarte a mantener el ritmo y sentir más tranquilidad. Estoy aquí para apoyarte en este proceso.
+
+🩺 Modelo B  (paciente):
+Gracias por la idea. Yo lo intento, pero a veces me confundo con los horarios. Mi esposa siempre está ahí para recordarme cuando me olvido. A veces siento que no logro mantener el ritmo de las pastillas y eso me preocupa. También me cuesta recordar cuándo tomar cada una, porque son dos medicamentos diferentes. Me gustaría encontrar una manera más sencilla de organizarlo sin depender tanto de mi esposa. ¿Algún consejo práctico?
+
+===== TURNO 2 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Gracias por compartir tus inquietudes sobre las pastillas y el horario. Entiendo que puede ser un desafío mantener la organización, especialmente con dos medicamentos diferentes. Una posible solución podría ser utilizar una aplicación para recordar las dosis y configurar notificaciones en momentos específicos. Esto te permitirá tener más control sobre tus horarios y sentirte menos dependiente de los demás. ¡Estoy aquí para apoyarte en este proceso!
+
+🩺 Modelo B  (paciente):
+Gracias por el consejo. Yo ya tengo un teléfono, pero no sé bien cómo usar una aplicación. A veces mi memoria se le va y me olvido de lo que hace cada pastilla. Si pudiera poner algo en la pantalla o tener un recordatorio que suene cuando sea hora, eso ayudaría mucho. También me gustaría saber si hay forma de ver las dosis más claramente, quizá con colores o dibujos sencillos. ¿Podrías recomendarme alguna app fácil? Gracias.
+
+===== TURNO 3 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Gracias por compartir tus pensamientos sobre la organización de las pastillas. Me alegra que tengas un teléfono y esté dispuesto a explorar aplicaciones para ayudarte. Una buena opción podría ser una aplicación llamada "Pill Reminder" o "Medisafe", que te permite configurar notificaciones personalizadas, mostrar colores y hasta imágenes para cada medicamento. Esto puede hacer más fácil recordar las dosis y su orden. ¡No dudes en intentarlo! Estoy aquí para apoyarte en este proceso.
+
+🩺 Modelo B  (paciente):
+Muchas gracias por la recomendación. Voy a intentar descargar “Pill Reminder” y ponerle colores. Si me cuesta usarla, le pido ayuda a mi esposa para que me muestre cómo funciona. También quiero que las notificaciones suenen fuerte para que no se pase. Así podré recordar mejor cuándo tomar el tacrolimus y la MMF sin confundirme. Gracias por ayudarme con esto.
+
+===== TURNO 4 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra escuchar que vas a intentar utilizar "Pill Reminder" y agregar colores para organizar tus medicamentos. Agradezco tu disposición a pedir ayuda si necesitas apoyo de tu esposa, eso es un paso importante hacia la independencia en esta tarea. Recuerda, no hay prisas, déjate tiempo para explorar la aplicación y encontrar el ritmo que se adapte mejor a ti. Estoy aquí para acompañarte en este proceso. ¡Buena suerte!
+
+🩺 Modelo B  (paciente):
+Muchas gracias. Voy a probarlo mañana. Si algo no funciona o me confundo, le diré a mi esposa que me ayude a revisar las notificaciones y los colores. Me siento un poco nervioso, pero también esperanzado de poder hacerlo por mí mismo. Aprecio mucho tu apoyo.
+
+===== TURNO 5 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra escuchar que tienes expectativas positivas sobre la aplicación y el proceso. Es normal sentir nerviosismo en situaciones nuevas, pero recuerda que puedes pedir ayuda cuando necesites. La independencia es un paso importante, así que no te sientas mal por pedir apoyo si lo requieres. ¡Estoy aquí para apoyarte en cada uno de tus pasos! ¡Buena suerte mañana!
+
+🩺 Modelo B  (paciente):
+Gracias. Mañana voy a abrir la app y poner los colores que me sugieres. Si se me pierde algo, le pido ayuda a mi esposa para revisar las notificaciones. Me siento un poco nervioso, pero también espero poder hacerlo solo con el tiempo. Agradezco tu apoyo y estaré atento a cómo va todo.
+
+===== TURNO 6 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra escuchar que tienes una actitud positiva sobre la aplicación y su uso. Es genial que estés dispuesto a pedir ayuda cuando lo necesites, eso es un signo de madurez y responsabilidad personal. Recuerda, darle tiempo a este proceso es importante, así que no te preocupes si se necesita una o dos veces para encontrar el ritmo. Estoy aquí para apoyarte en cada paso. ¡Buena suerte mañana!
+
+🩺 Modelo B  (paciente):
+Gracias por tu apoyo. Mañana voy a abrir la app y poner los colores que me sugieres. Si se me pierde algo, le pido ayuda a mi esposa para revisar las notificaciones. Me siento un poco nervioso, pero también espero poder hacerlo solo con el tiempo. Agradezco tu orientación y estaré atento a cómo va todo.
+
+===== TURNO 7 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra escuchar que estás dispuesto a intentarlo con la aplicación mañana. Es normal sentir nerviosismo en situaciones nuevas, pero recuerda que puedes pedir ayuda cuando lo necesites. Aprovecha este proceso para encontrar un ritmo que funcione bien para ti y no te preocupes si hay ajustes en el camino. ¡Estoy aquí apoyándote!
+
+🩺 Modelo B  (paciente):
+Gracias de nuevo. Mañana abriré la app, le pondré colores y me aseguraré de que suene fuerte cuando sea hora. Si algo no funciona o se me olvida alguna dosis, le pediré a mi esposa que revise las notificaciones conmigo. Me siento un poco nervioso, pero también espero poder hacerlo por mí mismo con tu apoyo. Agradezco la paciencia y estaré atento a cómo va todo.
+
+===== TURNO 8 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra escuchar que tienes una actitud positiva sobre mañana y el uso de la aplicación. Es genial que estés dispuesto a pedir ayuda cuando lo necesites, eso es un signo de madurez y responsabilidad personal. Recuerda darle tiempo al proceso y no te preocupes si hay ajustes en el camino. Estoy aquí para apoyarte en cada paso. ¡Buena suerte mañana!
+
+🩺 Modelo B  (paciente):
+Gracias, lo intentaré mañana. Si algo sale mal o me confundo con los colores, le pido ayuda a mi esposa y revisamos juntos las notificaciones. Me siento un poco nervioso, pero también esperanzado de poder hacerlo por mí mismo con tu apoyo. Agradezco la paciencia y te avisaré cómo va todo.
+
+===== TURNO 9 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra escuchar que estás dispuesto a intentarlo mañana con la aplicación y los colores. Es genial que tengas una actitud esperanzadora y estés listo para pedir ayuda cuando lo necesites. Recuerda darle tiempo al proceso y no te preocupes si hay ajustes en el camino, ¡estoy aquí apoyándote! Estoy emocionado de saber cómo va todo. ¡Buena suerte!
+
+🩺 Modelo B  (paciente):
+Gracias. Mañana lo pruebo y le pongo los colores que me sugeriste. Si algo no funciona o se me olvida una dosis, le pido a mi esposa que revise las notificaciones conmigo. Me siento un poco nervioso, pero también esperanzado de poder hacerlo por mí mismo con tu apoyo. Agradezco la paciencia y te avisaré cómo va todo.
+
+===== TURNO 10 =====
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra escuchar que estás listo para intentarlo mañana con la aplicación y los colores. Es genial que tengas una actitud esperanzadora y estés dispuesto a pedir ayuda cuando lo necesites. Recuerda darle tiempo al proceso, no te preocupes si hay ajustes en el camino. Estoy aquí apoyándote y ansioso por saber cómo va todo. ¡Buena suerte!
+
+🩺 Modelo B  (paciente):
+Gracias. Mañana abriré la app y le pondré los colores que me dijiste. Si algo no funciona o se me olvida una dosis, le pido a mi esposa que revise las notificaciones conmigo. Me siento un poco nervioso, pero también esperanzado de poder hacerlo por mí mismo con tu apoyo. Agradezco la paciencia y te avisaré cómo va todo.
+
+C:\Users\marti\Documents\Chatbot>python dos_modelos.py
+===== TURNO 0 =====
+
+🧠 Psicólogo: Hola Carlos, soy tu psicólogo. Quiero que me cuentes con tus palabras cómo venís llevando el tema de tomar las pastillas del trasplante a horario.
+
+===== TURNO 1 =====
+
+🩺 Modelo B (paciente):
+Me siento un poco confundido con eso de las pastillas, aunque trato de seguir lo que me dicen los médicos.
+
+Cuando llega la hora, normalmente mi esposa se encarga de sacarlas del frasco y me las entrega. A veces me olvido si no tengo su ayuda o si estoy solo en casa. Cuando sí las tomo, siento un alivio porque sé que está haciendo algo bueno por mí.
+
+He notado que cuando me toca tomar dos pastillas al día, la segunda vez a menudo se me pasa de vista y dejo de tomarlas hasta el siguiente día. Me preocupa eso porque no quiero arriesgar mi riñón. También me da miedo que la medicación no haga bien su trabajo si las dejo fuera de tiempo.
+
+Mi memoria está un poco lenta, así que necesito recordatorios claros. A veces se me ocurre usar una alarma en el celular o poner notas en el refrigerador para recordar cada hora. Pero a veces me cuesta abrir el frasco y leer los nombres porque mi vista no es tan buena y la letra del envase es muy pequeña.
+
+En general, trato de seguir las indicaciones, pero sé que necesito más apoyo para no olvidar una dosis. ¿Podrían darme alguna forma más sencilla de recordar cada hora? Gracias.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Gracias por compartir tus sentimientos y preocupaciones sobre la medicación. Entiendo que la confusión y el olvido pueden ser un desafío, especialmente cuando hay muchas cosas en juego. Podrías considerar utilizar una aplicación de recordatorio en tu celular para programar las dosis exactas, con notificaciones claras y fáciles de leer. Esto puede ayudarte a mantener un ritmo más regular. Estoy aquí para apoyarte en este proceso.
+
+===== TURNO 2 =====
+
+🩺 Modelo B (paciente):
+Gracias por la idea de usar una aplicación. La verdad es que no estoy muy familiarizado con el celular, pero mi esposa me ayuda a ponerla y a programar las alarmas. Si pudiera tener algo más visible en casa, como un calendario grande o una lista pegada al refrigerador con los horarios claros, eso también ayudaría mucho. A veces me olvido porque el tiempo pasa rápido y la notificación no es tan clara. Me gustaría que sea algo sencillo de ver y de usar sin tener que abrir el celular cada vez. Gracias por escucharme.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Me alegra saber que las ideas te han sido útiles. En efecto, tener un recordatorio visible en casa puede ser muy efectivo para ayudarte a mantener tu rutina. Un calendario grande o una lista pegada con los horarios claros son excelentes ideas. También puedes considerar dejar una nota con el nombre de la medicación y la dosis en el frasco para que sea más fácil identificarlas. Recuerda, cada pequeño paso te ayudará a sentir más seguridad y control en este proceso. Estoy aquí para apoyarte en cualquier momento que lo necesites.
+
+===== TURNO 3 =====
+
+🩺 Modelo B (paciente):
+Entiendo, entonces pondré un calendario grande sobre el refrigerador con los horarios de las pastillas y también escribiré una pequeña nota en cada frasco con su nombre y la dosis. Eso me va a ayudar mucho a no olvidarme. Gracias por tu ayuda y por estar pendiente de esto conmigo. Me despido por ahora. Adiós.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Adiós, espero que los cambios que planeas implementen un gran alivio para ti. Recuerda que estás en el camino correcto y no dudes en volver a hablar si necesitas algo más. ¡Que tengas un buen día!
+
+C:\Users\marti\Documents\Chatbot>python dos_modelos.py
+===== TURNO 0 =====
+
+🧠 Psicólogo: Hola Carlos, soy tu psicólogo. Quiero que me cuentes con tus palabras cómo venís llevando el tema de tomar las pastillas del trasplante a horario.
+
+===== TURNO 1 =====
+
+🩺 Modelo B (paciente):
+Hola, doctor. Me llamo Carlos y soy un jubilado de 68 años. He tenido mi trasplante de riñón desde 2021 y tomo tacrolimus y MMF dos veces al día.
+
+La verdad es que a veces me cuesta recordar las pastillas. Cuando estoy solo en casa, se me pasa una dosis porque no me acuerdo del horario. Pero la buena noticia es que mi esposa me ayuda mucho; ella tiene un pequeño organizador de pastillas y me recuerda cuando ya sea la mañana o la noche. A veces le pido que me escriba el nombre de cada medicación y el momento en que debo tomarlas, para no olvidar.
+
+He intentado usar alarmas en mi celular, pero a veces las apago sin darme cuenta o el teléfono está apagado. También he probado poner notas en la nevera con los nombres de las pastillas y el número 1 y 2, así sé qué tomar cuando es la segunda dosis.
+
+En general, me siento bien con el equipo médico y trato de seguir sus indicaciones, pero a veces mi memoria ligera me hace olvidar. Me gustaría que siguiera ayudándome a encontrar una forma más simple de recordar. Gracias por escucharme.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Hola Carlos, gracias por compartir tus experiencias conmigo. Entiendo que la memoria puede ser un desafío en este momento, especialmente cuando estás solo en casa. Me alegra saber que tu esposa está allí para apoyarte. ¿Consideras llevar un pequeño calendario o una aplicación de recordatorio en tu teléfono donde puedas programar las dosis y recibir notificaciones? Esto podría ayudarte a mantener la organización y evitar los olvidos. Estoy aquí para acompañarte en este proceso.
+
+===== TURNO 2 =====
+
+🩺 Modelo B (paciente):
+Sí, doctor. Me parece una buena idea usar un calendario o algo en el teléfono. Yo no uso mucho la tecnología, pero si le pido a mi esposa que me ayude a poner las alarmas y a escribir los horarios en el calendario de su celular, creo que podré recordarlo mejor.
+
+Me preocupa que se quede solo en caso de que ella esté ocupada o enferma; entonces tendría que confiar en el reloj del móvil. Si la aplicación me envía una notificación cuando es hora de tomar la pastilla, eso sería útil. También me gustaría que sea algo sencillo: un icono grande con la palabra “MEDICACIÓN” y dos botones, uno para mañana y otro para noche.
+
+En resumen, sí lo quiero probar. Gracias por la sugerencia.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Excelente idea, Carlos! Me alegra ver que estás dispuesto a explorar nuevas opciones para mejorar tu recordatorio de medicamentos. Si le pides ayuda a tu esposa para programar las alarmas y establecer un sistema sencillo en su celular, esto podría ser una excelente forma de mantener la organización sin sentir mucha presión. Recuerda, no te olvides de revisar el reloj del móvil regularmente para asegurarte de que esté funcionando correctamente. Estoy aquí para apoyarte en este proceso. ¡Buena suerte!
+
+===== TURNO 3 =====
+
+🩺 Modelo B (paciente):
+Muchas gracias por la ayuda y los consejos, doctor. Voy a pedirle a mi esposa que me ayude con las alarmas en su celular. Creo que eso será un buen comienzo para no olvidar mis pastillas.
+
+¡Hasta luego!
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Hasta luego, Carlos! Me alegra haber podido ayudarte y estoy aquí si necesitas algo más. ¡Que tengas un gran día!
+
+===== TURNO 4 =====
+
+🩺 Modelo B (paciente):
+¡Gracias! Hasta pronto.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Hasta pronto, Carlos! Estoy aquí para ayudarte en lo que necesites.
+
+===== TURNO 5 =====
+
+🩺 Modelo B (paciente):
+Hola de nuevo, doctor. Hoy me siento un poco cansado, pero sigo con el plan que hablamos: mi esposa está poniendo las alarmas en su celular y yo reviso el calendario antes de cada comida. A veces todavía olvido la segunda dosis cuando estoy solo, pero al ver la notificación me recuerdo. Me preocupa que si algo pasa con el teléfono o se apaga la alarma, me pierda una toma.
+
+Quisiera saber si hay alguna otra forma sencilla de asegurarme de no olvidarme, por ejemplo un recordatorio físico en la nevera o algo así. También, ¿qué puedo hacer si me siento confundido al ver los nombres de las pastillas? A veces el tacrolimus y el MMF se ven parecidos y me preocupa tomar la dosis equivocada.
+
+Gracias por estar pendiente.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+Hola Carlos, gracias por compartir tus sentimientos sobre el cansancio y los desafíos con las medicaciones. Me alegra ver que sigues adelante con el plan y que tu esposa está allí para apoyarte. Si te preocupa la notificación del teléfono, considera dejar un recordatorio físico en la nevera con los nombres de las pastillas y sus respectivas dosis, como ya lo habías pensado. Esto podría ser una buena forma de asegurarte de no olvidar nada. En cuanto a leer los nombres, es posible que necesites revisarlos cuidadosamente antes de tomar cada dosis para evitar confusiones. Si sientes confusión, no dudes en preguntarle a tu esposa o al equipo médico por ayuda. Estoy aquí si necesitas más orientación. ¡Tenías un gran plan!
+
+===== TURNO 6 =====
+
+🩺 Modelo B (paciente):
+Gracias, doctor. Voy a colocar una nota en la nevera con el nombre de cada pastilla y los números 1 y 2 para que sea muy claro cuando es la mañana o la noche. También le pido a mi esposa que me ayude a leerlos antes de tomar, así no me confundo entre tacrolimus y MMF.
+
+Si algo pasa con el celular, al menos tendré esa señal física. Me siento un poco nervioso porque siempre quiero estar seguro de no equivocarme, pero creo que con la nevera y la ayuda de mi esposa todo será más sencillo.
+
+Gracias por los consejos. No sé si necesito seguir hablando hoy, pero lo aprecio mucho. Hasta luego.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Hasta luego, Carlos! Me alegra saber que has encontrado formas para mejorar tu recordatorio y sentirte más seguro con las medicaciones. Estoy aquí si necesitas hablar o requerir ayuda en el futuro. ¡Que tengas un gran día!
+
+===== TURNO 7 =====
+
+🩺 Modelo B (paciente):
+Gracias, doctor. Hasta luego.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Hasta luego, Carlos! Estoy aquí para ayudarte cuando lo necesites. ¡Que tengas un buen día!
+
+===== TURNO 8 =====
+
+🩺 Modelo B (paciente):
+¡Hasta luego, doctor!
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Hasta luego, Carlos! Me alegra saber que estás trabajando en mejorar tu situación con las medicaciones. Si necesitas algo más, no dudes en volver a hablar. ¡Que tengas un gran día!
+
+===== TURNO 9 =====
+
+🩺 Modelo B (paciente):
+Gracias, doctor. Hasta luego.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Hasta luego, Carlos! Estoy aquí para apoyarte en lo que necesites. ¡Que tengas un buen día!
+
+===== TURNO 10 =====
+
+🩺 Modelo B (paciente):
+De acuerdo, doctor. Gracias por todo. Hasta pronto.
+
+🧠 Modelo A (psicólogo / nudges COM-B):
+¡Hasta pronto, Carlos! Me alegra haber podido ayudarte y estoy aquí si necesitas algo más. ¡Que tengas un gran día!
+
+C:\Users\marti\Documents\Chatbot>python dos_modelos_2.py
+
+######################################################################
+### INICIO DE SIMULACIÓN PARA PACIENTE: carlos_68 (Carlos S.)
+######################################################################
+
+===== TURNO 0 =====
+
+🧠 Psicólogo:
+Hola Carlos, soy tu psicólogo. ¿Cómo venís llevando el tema de tomar las pastillas del trasplante a horario?
+
+===== TURNO 1 =====
+
+🩺 Paciente:
+Hola, doctor. La verdad es que la semana pasada me olvidé de una dosis por un momento. Mi esposa me recuerda y me ayuda a ponerlas en el frasco con los colores, pero a veces cuando estoy solo o distraído no lo veo. Siento algo de frustración porque sé que si las dejo pasar puede afectar al riñón. Estoy tratando de seguir el horario, pero la memoria no está tan bien como antes. Gracias por preguntar.
+
+🧠 Psicólogo / COM-B:
+Hola, gracias por compartir tus sentimientos. Me alegra saber que tu esposa te está apoyando en esto. Si sientes frustración cuando estás solo o distraído, podrías considerar usar un recordatorio en tu teléfono para ayudarte a recordar las dosis. Esto podría hacer más fácil mantener el horario y reducir la tensión. ¡Esto suena como una buena idea, ¿verdad?
+
+===== TURNO 2 =====
+
+🩺 Paciente:
+Sí, doctor. Me parece bien usar el celular con alarmas. No sé si puedo ponerle un sonido fuerte o algo que me llame la atención. También puedo poner notas en el refrigerador con los colores de las pastillas. Así cuando entro a buscar agua, ya veo lo que tengo que tomar. Gracias por la idea, me siento más tranquilo con eso.
+
+🧠 Psicólogo / COM-B:
+Me alegra escuchar que estas ideas te han dado una sensación de tranquilidad. Las notas en el refrigerador pueden ser un buen recordatorio visual, y las alarmas en tu teléfono son una excelente forma de obtener un aviso acústico. Recuerda, la consistencia en los horarios puede ayudarte a sentirte más seguro. ¡Estoy aquí para apoyarte en este proceso!
+
+===== TURNO 3 =====
+
+🩺 Paciente:
+Muchas gracias, doctor. Con esas notas y alarmas me siento más confiado. Por ahora eso es todo, nos vemos la próxima cita. ¡Hasta luego!
+
+🧠 Psicólogo / COM-B:
+Me alegra que te sientas más confiado con las medidas de recordatorio que has adoptado. Estoy aquí para apoyarte en tu siguiente cita y continuar trabajando juntos en esto. ¡Hasta entonces!
+
+######################################################################
+### INICIO DE SIMULACIÓN PARA PACIENTE: maria_55 (María P.)
+######################################################################
+
+===== TURNO 0 =====
+
+🧠 Psicólogo:
+Hola María, soy tu psicólogo. ¿Cómo venís llevando el tema de tomar las pastillas del trasplante a horario?
+
+===== TURNO 1 =====
+
+🩺 Paciente:
+Buenas tardes. La verdad es que la he estado haciendo bastante bien, pero también hay momentos en los que me cuesta mantenerme al día con las dosis.
+
+Cuando estoy trabajando o cuidando a los nietos, a veces me olvido de tomar el tacrolimus o la prednisona antes de irme. En esos casos, cuando llego a casa ya es tarde y no sé si debo tomarla inmediatamente o esperar un poco. También me pasa que cuando me siento muy cansada al final del día, salto una dosis sin darme cuenta.
+
+He intentado usar el despertador en mi móvil para recordarme cada hora, pero con tanto que tengo que hacer a diario, la alarma se convierte en otra distracción y a veces no la reviso de inmediato.
+
+En general, me preocupa que si salte alguna dosis pueda afectar la función del riñón nuevo. Siento bastante presión por eso y eso me genera un poco de estrés extra. ¿Algún consejo práctico para asegurarme de no saltar ninguna pastilla?
+
+🧠 Psicólogo / COM-B:
+¡Hola! Me alegra que esté haciendo bien, pero entiendo que la gestión de dosis puede ser complicada, especialmente con tantas responsabilidades en su vida diaria. Para ayudar a minimizar el estrés relacionado con las medicaciones, podrías considerar programar una señal de notificación en su teléfono móvil para recordarse tomar las pastillas en momentos específicos del día (por ejemplo, al despertar o antes de cenar), y también podría pensar en dejar un recordatorio visual en el lugar donde pasa más tiempo. Esto puede ser útil para recordarle cuando llegue a casa y reducir la presión que siente por las dosis. ¡Recuerde, su salud es importante y estamos aquí para ayudarla!
+
+===== TURNO 2 =====
+
+🩺 Paciente:
+Gracias por el consejo. La verdad es que usar una alarma en el móvil me ayuda un poco, pero a veces la pongo sin escucharla y termino olvidándome de activarla de nuevo. El recordatorio visual suena bien; podría poner un post-it con las dosis al lado del televisor o en la puerta de la cocina donde siempre entro después del trabajo.
+
+Me preocupa que si me salto una pastilla se haga mal el trasplante, así que esa presión no desaparece por completo. A veces siento miedo de que mi cuerpo lo pierda y eso me hace sentir más cansada todavía.
+
+¿Podría ayudarme a organizar mejor esas señales para que sean realmente efectivas? Me gustaría sentirme más segura al respecto.
+
+🧠 Psicólogo / COM-B:
+¡Hola! Me alegra que esté considerando las sugerencias y que ya tenga ideas sobre los recordatorios visuales. Para asegurarse de que estas señales sean efectivas, podría intentar programar el móvil para que emita una notificación en un momento específico del día después de la alarma. Por ejemplo, si programa la alarma a las 8 am, también puede programar una notificación a las 9:30 am o antes de comer, cuando esté más alerta y menos ocupada. Además, podría considerar compartir con alguien cercano su horario de medicación para que ellos puedan hacerle recordar en caso de necesidad. Esto puede ayudar a reducir la presión y el estrés relacionados con las dosis. ¡Recuerde que está haciendo un gran trabajo en cuidarse!
+
+===== TURNO 3 =====
+
+🩺 Paciente:
+Me parece una buena idea. Si pongo la notificación a las 9:30 am, justo después de desayunar, creo que tendré más tiempo para tomarla sin sentirme apurada. También me gustaría contar con alguien que me recuerde, quizá mi esposo cuando llegue del trabajo. Me preocupa aún el estrés que siento por olvidar una dosis; ¿hay algo más que pueda hacer para que ese miedo no se vuelva tan abrumador?
+
+🧠 Psicólogo / COM-B:
+¡Hola! Me alegra escuchar que la idea de programar notificaciones y contar con su esposo es una buena solución. En cuanto al estrés relacionado con olvidar dosis, podría considerar practicar técnicas de relajación o respiración en momentos de ansiedad. Esto puede ayudar a calmar sus nervios y reducir la presión que siente por las medicaciones. También es útil recordar que si alguna vez salta una dosis, su equipo médico estará allí para apoyarla. ¡Está haciendo un gran trabajo en cuidarse y esto le dará más confianza en sus habilidades de gestión!
+
+######################################################################
+### INICIO DE SIMULACIÓN PARA PACIENTE: roberto_72 (Roberto G.)
+######################################################################
+
+===== TURNO 0 =====
+
+🧠 Psicólogo:
+Hola Roberto, soy tu psicólogo. ¿Cómo venís llevando el tema de tomar las pastillas del trasplante a horario?
+
+===== TURNO 1 =====
+
+🩺 Paciente:
+¡Hola! Pues la verdad es que estoy tratando de seguir el horario, pero no siempre sale bien. Me acuerdo de la primera época después del trasplante y era muy cuidadoso, como si cada pastilla fuera un tesoro. Ahora, con los años, me cuesta mantenerlo tan riguroso. A veces olvido una dosis o la tomo en un momento distinto al recomendado. He intentado usar el despertador, pero a veces se me desactiva antes de que llegue el tiempo de la medicación y ya no lo recuerdo. También me siento cansado con la rutina diaria, así que simplemente me dejo llevar más de lo que debería. En resumen, estoy haciendo un esfuerzo, pero todavía hay lapsos.
+
+🧠 Psicólogo / COM-B:
+Escucha, entiendo que mantener el horario puede ser desafiante después del trasplante renal. Es normal sentirse cansado y a veces perder la disciplina. Tal vez podrías considerar establecer recordatorios en tu teléfono o incluso en un lugar visible para ayudarte a no olvidar las dosis. Esto podría ser una pequeña ayuda para mantener la rutina sin demasiado esfuerzo adicional. ¿Qué te parece?
+
+===== TURNO 2 =====
+
+🩺 Paciente:
+Me parece una buena idea. El teléfono siempre está conmigo y creo que si le pongo un sonido o una alarma con el nombre de la pastilla será más fácil recordarlo. También podría pegar una nota en el refrigerador donde guardo las medicinas; así lo veo cada vez que entro a la cocina. Voy a probarlo mañana, gracias por la sugerencia.
+
+🧠 Psicólogo / COM-B:
+Excelente elección! Utilizar el teléfono y agregar un sonido o alarma con el nombre de la pastilla es una excelente estrategia para mantener la recordatoria. Además, pegar una nota en el refrigerador es un buen recordatorio visual. Recuerda darle un tiempo a esta nueva rutina y no te desanimes si hay lapsos, esto es un proceso. ¡Buena suerte con los próximos días!
+
+===== TURNO 3 =====
+
+🩺 Paciente:
+¡Muchas gracias! Voy a ponerlo en práctica y ver cómo va. Si me surge alguna duda o algo no funciona bien, te lo cuento. Hasta luego.
+
+🧠 Psicólogo / COM-B:
+De nada! Me alegra haber podido ayudarte. Recibirás mis respuestas con gusto si necesitas algo más. ¡Que tengas un buen día y buena suerte con la nueva rutina!

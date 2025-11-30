@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: chatbot_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      # IMPORTANT: If running LLM on the host machine (VPS), use http://host.docker.internal:1234
+      # If running LLM on a different server/PC, put that IP here.
+      - LLM_API_URL=http://host.docker.internal:1234/v1/chat/completions
+
+  frontend:
+    build: ./frontend
+    container_name: chatbot_frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
