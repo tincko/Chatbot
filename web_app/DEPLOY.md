@@ -24,12 +24,17 @@ Tenés 3 opciones:
 *   **Opción A (Recomendada para Producción)**: Usar una API externa (OpenAI, DeepSeek API, OpenRouter).
     *   *Costo*: Pagás por uso.
     *   *Configuración*: Cambiás la URL en el `docker-compose.yml` a la de la API.
-*   **Opción B (Túnel a Casa)**: Dejar el modelo corriendo en TU PC (con GPU) y conectar el servidor a tu casa.
-    *   *Costo*: Gratis (usás tu luz).
-    *   *Configuración*: Usás `ngrok` en tu PC para exponer el puerto 1234 y ponés esa URL en el servidor.
+*   **Opción B (Túnel a Casa - Ngrok)**: Dejar el modelo corriendo en TU PC (con GPU) y conectar el servidor a tu casa.
+    *   *Costo*: Gratis (limitado) o Pago.
+    *   *Configuración*: Usás `ngrok` en tu PC para exponer el puerto 1234.
 *   **Opción C (Lento)**: Correr un modelo muy pequeño (Quantized GGUF) en el CPU del servidor.
     *   *Costo*: Gratis (incluido en VPS).
     *   *Desventaja*: Será muy lento (tokens por segundo bajos).
+*   **Opción D (Recomendada Gratis - Cloudflare Tunnel)**:
+    *   *Concepto*: Tu PC crea un túnel seguro hacia Cloudflare. No abrís puertos en tu router.
+    *   *Costo*: Gratis.
+    *   *Ventaja*: IP fija no necesaria, SSL automático, muy seguro.
+    *   *Uso*: Instalas `cloudflared` en tu PC y apuntas el tráfico al puerto 1234.
 
 ---
 

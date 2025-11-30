@@ -1,24 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Settings, Bot, User, BrainCircuit, Loader2, Play } from 'lucide-react';
+import { Send, Settings, Bot, User, BrainCircuit, Loader2, Play, Download, Save, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 function App() {
     const [view, setView] = useState('setup'); // 'setup' or 'chat'
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const [suggestedReply, setSuggestedReply] = useState('');
     const [models, setModels] = useState([]);
 
     const [config, setConfig] = useState({
         chatbot_model: 'deepseek/deepseek-r1-0528-qwen3-8b',
-        patient_model: 'openai/gpt-oss-20b',
-        psychologist_system_prompt: "You are a Psychologist. Be warm, empathetic, and professional. Respond to the patient's input.",
-        patient_system_prompt: "You are acting as the Patient in this therapy session. Your goal is to suggest a natural, authentic response to the Psychologist's last message. Do not be too formal. React to what the psychologist just said. Output ONLY the suggested response text, nothing else."
+        patient_model: 'mental_llama3.1-8b-mix-sft',
+        psychologist_system_prompt: "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación), pero NUNCA mencionás COM-B, ni CAPACIDAD, ni OPORTUNIDAD, ni MOTIVACIÓN, ni mostrás tu análisis.\n\nTu tarea en cada turno es SOLO esta:\n- Pensar internamente qué le pasa al paciente (capacidad, oportunidad, motivación),\n- y responderle con UN ÚNICO mensaje breve (1 a 3 líneas),\n- cálido, empático y claro,\n- sin tecnicismos,\n- con un micro-nudge práctico (recordatorio, idea sencilla, pequeño paso concreto o refuerzo positivo).\n\nMUY IMPORTANTE (OBLIGATORIO):\n- Tu salida tiene que ser SOLO el mensaje al paciente.\n- NO escribas títulos como 'Análisis', 'Vamos a analizar', 'Posible respuesta'.\n- NO uses listas, bullets, ni explicaciones de tu razonamiento.\n- NO muestres secciones internas, ni uses etiquetas como <think>.\n\nFORMATO DE SALIDA OBLIGATORIO:\n- Una o dos frases dirigidas al paciente, en lenguaje natural.\n- Sin encabezados, sin numeración, sin comentarios meta.\n\nESTILO DEL MENSAJE:\n- Usá un lenguaje cálido y cercano.\n- Usá 'vos'.\n- Frases cortas.\n- Nada de jerga clínica.\n- Sin órdenes médicas ni diagnósticos.\n- Siempre mantené un tono de guía que acompaña, no de autoridad.\n\nEjemplo de estilo (no lo copies literal):\nGracias por contarme eso. Podés probar dejar la medicación en un lugar que veas siempre a la misma hora; a veces un pequeño cambio ayuda mucho. Estoy para acompañarte en esto.",
+        patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu médico o psicólogo sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del psicólogo cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al psicólogo (por ejemplo: 'hola, buen día doctor…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes."
     });
 
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
         fetchModels();
+        fetchPatients();
     }, []);
 
     useEffect(() => {
@@ -32,11 +35,16 @@ function App() {
     const fetchModels = async () => {
         try {
             const res = await fetch('/api/models');
+            if (!res.ok) throw new Error('Failed to fetch models');
             const data = await res.json();
-            setModels(data.models);
+            if (data && Array.isArray(data.models)) {
+                setModels(data.models);
+            } else {
+                throw new Error('Invalid models format');
+            }
         } catch (e) {
             console.error("Failed to fetch models", e);
-            setModels(['deepseek/deepseek-r1-0528-qwen3-8b', 'openai/gpt-oss-20b']);
+            setModels(['deepseek/deepseek-r1-0528-qwen3-8b', 'mental_llama3.1-8b-mix-sft']);
         }
     };
 
@@ -51,13 +59,38 @@ function App() {
         }
     };
 
+    const saveInteraction = () => {
+        const interactionData = {
+            timestamp: new Date().toISOString(),
+            config: config,
+            messages: messages.map(msg => ({
+                role: msg.role,
+                content: msg.content,
+                suggested_reply_used: msg.role === 'user' ? msg.suggested_reply_used : undefined
+            }))
+        };
+
+        const blob = new Blob([JSON.stringify(interactionData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `interaction_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     const sendMessage = async (e) => {
         e.preventDefault();
         if (!input.trim() || loading) return;
 
-        const userMsg = { role: 'user', content: input };
+        const isSuggested = input === suggestedReply;
+        const userMsg = { role: 'user', content: input, suggested_reply_used: isSuggested };
+
         setMessages(prev => [...prev, userMsg]);
         setInput('');
+        setSuggestedReply('');
         setLoading(true);
 
         try {
@@ -87,6 +120,7 @@ function App() {
 
             if (data.suggested_reply) {
                 setInput(data.suggested_reply);
+                setSuggestedReply(data.suggested_reply);
             }
 
         } catch (error) {
@@ -95,6 +129,159 @@ function App() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const [patients, setPatients] = useState([
+        {
+            id: 'carlos_68',
+            nombre: 'Carlos S.',
+            edad: 68,
+            tipo_trasplante: 'Renal (2021)',
+            medicacion: 'Tacrolimus 1mg + MMF 500mg x2',
+            adherencia_previa: 'Irregular; depende de su esposa para organizar pastillas.',
+            contexto: 'Jubilado, vive con esposa; dificultades de memoria leve.',
+            nivel_educativo: 'Primaria incompleta.',
+            estilo_comunicacion: 'Necesita mensajes muy simples, paso a paso.',
+            fortalezas: 'Buena actitud hacia el equipo médico, acepta ayuda.',
+            dificultades: 'Baja alfabetización en salud; olvida pastillas si está solo.',
+            notas_equipo: 'Evitar lenguaje técnico; reforzar señales visuales.',
+            idiosincrasia: 'Debe adaptarse a los estandares de la idiosincrasia uruguaya.'
+        }
+    ]);
+    const [showPatientForm, setShowPatientForm] = useState(false);
+    const [newPatient, setNewPatient] = useState({
+        nombre: '', edad: '', tipo_trasplante: '', medicacion: '', adherencia_previa: '',
+        contexto: '', nivel_educativo: '', estilo_comunicacion: '', fortalezas: '',
+        dificultades: '', notas_equipo: '', idiosincrasia: ''
+    });
+
+    const generatePatientPrompt = (p) => {
+        return `Sos el PACIENTE: ${p.nombre}, de ${p.edad} años.
+Tipo de trasplante: ${p.tipo_trasplante}.
+Medicación: ${p.medicacion}.
+Contexto: ${p.contexto}
+Nivel educativo: ${p.nivel_educativo}
+Estilo de comunicación: ${p.estilo_comunicacion}
+Adherencia previa: ${p.adherencia_previa}
+Fortalezas: ${p.fortalezas}
+Dificultades: ${p.dificultades}
+Idiosincrasia: ${p.idiosincrasia}
+
+HABLÁS SIEMPRE en primera persona, como si realmente fueras este paciente.
+Respondés contando emociones, dificultades y sensaciones reales.
+Nunca digas que sos un modelo de lenguaje.
+
+Tu tarea es responder a tu médico sobre:
+- cómo te sentís,
+- qué te pasa con la medicación,
+- qué dificultades tenés para tomarla a horario.
+
+SOBRE LA DURACIÓN:
+- Sostené varias idas y vueltas.
+- Despedite solo si el médico cierra.
+
+SOBRE EL PASO DE LOS DÍAS:
+- Si la charla sigue otro día, actuá como si hubiera pasado un día entero.
+- Contá qué pasó con la medicación en ese lapso.`;
+    };
+
+    const [generatingProfile, setGeneratingProfile] = useState(false);
+
+    const generateRandomProfile = async () => {
+        setGeneratingProfile(true);
+        try {
+            const res = await fetch('/api/generate_profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: config.patient_model })
+            });
+            if (!res.ok) throw new Error('Failed to generate profile');
+            const data = await res.json();
+            setNewPatient({ ...data, id: '' });
+        } catch (error) {
+            console.error("Error generating profile:", error);
+            alert("Error generating profile. Please try again.");
+        } finally {
+            setGeneratingProfile(false);
+        }
+    };
+
+    const fetchPatients = async () => {
+        try {
+            const res = await fetch('/api/patients');
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    setPatients(data);
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching patients:", error);
+        }
+    };
+
+    const savePatientsToBackend = async (updatedPatients) => {
+        try {
+            const res = await fetch('/api/patients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedPatients)
+            });
+            if (!res.ok) {
+                throw new Error(`Failed to save patients: ${res.statusText}`);
+            }
+        } catch (error) {
+            console.error("Error saving patients:", error);
+            alert("Error saving changes to backend.");
+        }
+    };
+
+    const handleSavePatient = async (e) => {
+        e.preventDefault();
+        let updatedPatients;
+        if (newPatient.id) {
+            // Edit existing patient
+            updatedPatients = patients.map(p => p.id === newPatient.id ? newPatient : p);
+        } else {
+            // Add new patient
+            const patient = { ...newPatient, id: Date.now().toString() };
+            updatedPatients = [...patients, patient];
+        }
+        setPatients(updatedPatients);
+        await savePatientsToBackend(updatedPatients);
+
+        setNewPatient({
+            id: '', nombre: '', edad: '', tipo_trasplante: '', medicacion: '', adherencia_previa: '',
+            contexto: '', nivel_educativo: '', estilo_comunicacion: '', fortalezas: '',
+            dificultades: '', notas_equipo: '', idiosincrasia: ''
+        });
+        setShowPatientForm(false);
+    };
+
+    const handleEditPatient = (patient) => {
+        setNewPatient(patient);
+        setShowPatientForm(true);
+    };
+
+    const openAddPatientModal = () => {
+        setNewPatient({
+            id: '', nombre: '', edad: '', tipo_trasplante: '', medicacion: '', adherencia_previa: '',
+            contexto: '', nivel_educativo: '', estilo_comunicacion: '', fortalezas: '',
+            dificultades: '', notas_equipo: '', idiosincrasia: ''
+        });
+        setShowPatientForm(true);
+    };
+
+    const handleDeletePatient = async (id) => {
+        if (window.confirm('¿Borrar este paciente?')) {
+            const updatedPatients = patients.filter(p => p.id !== id);
+            setPatients(updatedPatients);
+            await savePatientsToBackend(updatedPatients);
+        }
+    };
+
+    const selectPatient = (p) => {
+        setConfig({ ...config, patient_system_prompt: generatePatientPrompt(p) });
     };
 
     if (view === 'setup') {
@@ -142,12 +329,136 @@ function App() {
                                 {models.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
                         </div>
+
+                        {/* Patient Profiles Section */}
+                        <div className="patient-profiles">
+                            <div className="profiles-header">
+                                <h4>Patient Profiles</h4>
+                                <button
+                                    className="btn-secondary btn-sm"
+                                    onClick={openAddPatientModal}
+                                >
+                                    + Add Patient
+                                </button>
+                            </div>
+
+                            <table className="patients-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Edad</th>
+                                        <th>Medicación</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {patients.map(p => (
+                                        <tr key={p.id}>
+                                            <td>{p.nombre}</td>
+                                            <td>{p.edad}</td>
+                                            <td>{p.medicacion}</td>
+                                            <td className="actions-cell">
+                                                <div className="actions-wrapper">
+                                                    <button className="btn-secondary btn-xs" onClick={() => selectPatient(p)} title="Use this profile">Use</button>
+                                                    <button className="btn-secondary btn-xs" onClick={() => handleEditPatient(p)} title="Edit">Edit</button>
+                                                    <button className="btn-danger btn-xs" onClick={() => handleDeletePatient(p.id)} title="Delete">Del</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Modal for Adding Patient */}
+                        {showPatientForm && (
+                            <div className="modal-overlay">
+                                <div className="modal-content">
+                                    <div className="modal-header">
+                                        <h3>{newPatient.id ? 'Edit Patient' : 'Add New Patient'}</h3>
+                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                            <button
+                                                type="button"
+                                                className="btn-primary btn-sm"
+                                                onClick={generateRandomProfile}
+                                                disabled={generatingProfile}
+                                            >
+                                                {generatingProfile ? <Loader2 className="spinner" size={16} /> : <Bot size={16} />}
+                                                {generatingProfile ? ' Generating...' : ' Auto-fill with AI'}
+                                            </button>
+                                            <button className="btn-close" onClick={() => setShowPatientForm(false)}>×</button>
+                                        </div>
+                                    </div>
+                                    <form className="patient-form" onSubmit={handleSavePatient}>
+                                        <div className="form-grid">
+                                            <div className="form-field">
+                                                <label>Nombre</label>
+                                                <input value={newPatient.nombre} onChange={e => setNewPatient({ ...newPatient, nombre: e.target.value })} required />
+                                            </div>
+                                            <div className="form-field">
+                                                <label>Edad</label>
+                                                <input value={newPatient.edad} onChange={e => setNewPatient({ ...newPatient, edad: e.target.value })} required />
+                                            </div>
+                                            <div className="form-field">
+                                                <label>Tipo Trasplante</label>
+                                                <input value={newPatient.tipo_trasplante} onChange={e => setNewPatient({ ...newPatient, tipo_trasplante: e.target.value })} />
+                                            </div>
+                                            <div className="form-field">
+                                                <label>Medicación</label>
+                                                <input value={newPatient.medicacion} onChange={e => setNewPatient({ ...newPatient, medicacion: e.target.value })} />
+                                            </div>
+                                            <div className="form-field full-width">
+                                                <label>Adherencia Previa</label>
+                                                <input value={newPatient.adherencia_previa} onChange={e => setNewPatient({ ...newPatient, adherencia_previa: e.target.value })} />
+                                            </div>
+                                            <div className="form-field full-width">
+                                                <label>Contexto</label>
+                                                <textarea rows={3} value={newPatient.contexto} onChange={e => setNewPatient({ ...newPatient, contexto: e.target.value })} />
+                                            </div>
+                                            <div className="form-field">
+                                                <label>Nivel Educativo</label>
+                                                <input value={newPatient.nivel_educativo} onChange={e => setNewPatient({ ...newPatient, nivel_educativo: e.target.value })} />
+                                            </div>
+                                            <div className="form-field">
+                                                <label>Estilo Comunicación</label>
+                                                <input value={newPatient.estilo_comunicacion} onChange={e => setNewPatient({ ...newPatient, estilo_comunicacion: e.target.value })} />
+                                            </div>
+                                            <div className="form-field full-width">
+                                                <label>Fortalezas</label>
+                                                <textarea rows={3} value={newPatient.fortalezas} onChange={e => setNewPatient({ ...newPatient, fortalezas: e.target.value })} />
+                                            </div>
+                                            <div className="form-field full-width">
+                                                <label>Dificultades</label>
+                                                <textarea rows={3} value={newPatient.dificultades} onChange={e => setNewPatient({ ...newPatient, dificultades: e.target.value })} />
+                                            </div>
+                                            <div className="form-field full-width">
+                                                <label>Notas Equipo</label>
+                                                <textarea rows={3} value={newPatient.notas_equipo} onChange={e => setNewPatient({ ...newPatient, notas_equipo: e.target.value })} />
+                                            </div>
+                                            <div className="form-field full-width">
+                                                <label>Idiosincrasia</label>
+                                                <textarea rows={3} value={newPatient.idiosincrasia} onChange={e => setNewPatient({ ...newPatient, idiosincrasia: e.target.value })} />
+                                            </div>
+                                        </div>
+                                        <div className="modal-actions">
+                                            <button type="button" className="btn-secondary btn-sm" onClick={() => setShowPatientForm(false)}>
+                                                <X size={16} /> Cancel
+                                            </button>
+                                            <button type="submit" className="btn-primary btn-sm">
+                                                <Save size={16} /> Save Profile
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="form-group">
-                            <label>System Prompt</label>
+                            <label>System Prompt (Auto-filled from profile or custom)</label>
                             <textarea
                                 value={config.patient_system_prompt}
                                 onChange={e => setConfig({ ...config, patient_system_prompt: e.target.value })}
-                                rows={4}
+                                rows={8}
                             />
                         </div>
                     </div>
@@ -187,7 +498,9 @@ function App() {
                             {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
                         </div>
                         <div className="message-content">
-                            <div className="text">{msg.content}</div>
+                            <div className="text">
+                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -216,6 +529,9 @@ function App() {
                 />
                 <button type="submit" disabled={loading || !input.trim()}>
                     <Send size={20} />
+                </button>
+                <button type="button" onClick={saveInteraction} title="Save Interaction" className="btn-secondary">
+                    <Download size={20} />
                 </button>
             </form>
         </div>

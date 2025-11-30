@@ -1,0 +1,32 @@
+[
+  {
+    "id": "carlos_68",
+    "nombre": "Carlos S.",
+    "edad": 68,
+    "tipo_trasplante": "Renal (2021)",
+    "medicacion": "Tacrolimus 1mg + MMF 500mg x2",
+    "adherencia_previa": "Irregular; depende de su esposa para organizar pastillas.",
+    "contexto": "Jubilado, vive con esposa; dificultades de memoria leve.",
+    "nivel_educativo": "Primaria incompleta.",
+    "estilo_comunicacion": "Necesita mensajes muy simples, paso a paso.",
+    "fortalezas": "Buena actitud hacia el equipo médico, acepta ayuda.",
+    "dificultades": "Baja alfabetización en salud; olvida pastillas si está solo.",
+    "notas_equipo": "Evitar lenguaje técnico; reforzar señales visuales.",
+    "idiosincrasia": "Debe adaptarse a los estandares de la idiosincrasia uruguaya."
+  },
+  {
+    "nombre": "Juan Carlos Gómez",
+    "edad": "40",
+    "tipo_trasplante": "Renal (año)",
+    "medicacion": "Ace-Inhibidor, Diuretico",
+    "adherencia_previa": "Tengo experiencia en tomar medicamentos, pero he tenido problemas de recuerdo.",
+    "contexto": "Estoy casado con dos hijos, trabajamos en un pequeño negocio.",
+    "nivel_educativo": "Secundaria",
+    "estilo_comunicacion": "Directo y claro.",
+    "fortalezas": "Resiliente, Capaz de superar obstáculos",
+    "dificultades": "Dificultad en la adhesión a la medicación",
+    "notas_equipo": "El equipo ha notado que Juan Carlos necesita más apoyo y motivación para seguir con su tratamiento.",
+    "idiosincrasia": "Juan Carlos es un hombre muy respetuoso de las tradiciones, especialmente en su comunidad.",
+    "id": "1764543844137"
+  }
+]
