@@ -28,5 +28,50 @@
     "notas_equipo": "El equipo ha notado que Juan Carlos necesita más apoyo y motivación para seguir con su tratamiento.",
     "idiosincrasia": "Juan Carlos es un hombre muy respetuoso de las tradiciones, especialmente en su comunidad.",
     "id": "1764543844137"
+  },
+  {
+    "nombre": "Ana López",
+    "edad": "40",
+    "tipo_trasplante": "Renal (2022)",
+    "medicacion": "Tacrolimus 0,1 mg/kg/día, Prednisona 5 mg/día, Metoprolol 50 mg/día, Enalapril 10 mg/día",
+    "adherencia_previa": "Ha cumplido con las citas médicas y la toma de medicamentos durante los últimos dos años tras el trasplante, aunque reporta ocasionalmente olvidos al tomar la prednisona por su efecto sedante.",
+    "contexto": "Trabaja como administrativa en una oficina pública, vive sola con su gato. Tiene un círculo social limitado a colegas de trabajo y vecinos del barrio.",
+    "nivel_educativo": "Licenciatura en Administración de Empresas",
+    "estilo_comunicacion": "Prefiere comunicarse de forma directa y concisa, utilizando ejemplos concretos para aclarar dudas.",
+    "fortalezas": "Responsable, organizada, buena capacidad para seguir rutinas y planificar actividades diarias. Tiene habilidades sociales moderadas que le permiten mantener relaciones laborales estables.",
+    "dificultades": "Dificultad ocasional con la gestión de horarios complejos; se siente abrumada cuando necesita combinar múltiples responsabilidades. Necesita apoyo en la interpretación de instrucciones médicas detalladas.",
+    "notas_equipo": "Recomendar seguimiento semestral con el equipo multidisciplinario, reforzar recordatorios digitales para medicación y revisar las interacciones entre tacrolimus y prednisona. Fomentar ejercicios breves durante su jornada laboral para mejorar la adherencia a la actividad física.",
+    "idiosincrasia": "Valora mucho la puntualidad y la organización; respeta las normas establecidas y espera que los demás también lo hagan.",
+    "id": "1764547596840"
+  },
+  {
+    "nombre": "María García López",
+    "edad": "40",
+    "tipo_trasplante": "Renal (2023)",
+    "medicacion": "Tacrolimus 1,5 mg dos veces al día, Prednisona 20 mg una vez al día, Azatioprina 150 mg una vez al día, Enalapril 10 mg una vez al día",
+    "adherencia_previa": "Ha cumplido con los controles de función renal y la medicación en su régimen previo de diálisis, aunque ocasionalmente olvidó tomar prednisona por falta de recordatorio.",
+    "contexto": "Madre soltera que trabaja como auxiliar administrativa en un centro médico. Vive con su hijo de 12 años y su esposo es enfermero. La familia tiene recursos limitados pero cuenta con el apoyo del sistema público de salud.",
+    "nivel_educativo": "Técnico superior",
+    "estilo_comunicacion": "Directa, utiliza expresiones coloquiales y habla de forma concisa. Prefiere la comunicación verbal frente a los escritos cuando necesita explicar sus síntomas o dudas.",
+    "fortalezas": "Responsable en su rutina diaria, mantiene una actitud positiva ante el tratamiento, tiene buena capacidad para seguir instrucciones médicas.",
+    "dificultades": "Dificultad para recordar horarios precisos de medicación sin un recordatorio digital; ansiedad relacionada con la posibilidad de rechazo del órgano y preocupaciones por el futuro financiero del cuidado médico.",
+    "notas_equipo": "Se sugiere implementar alarmas en smartphone y una caja organizadora de medicamentos. Se recomienda seguimiento psicológico trimestral para manejo de ansiedad, además de reforzar educación sobre signos tempranos de rechazo.",
+    "idiosincrasia": "Valora la familia como pilar central; practica la oración diaria como fuente de consuelo; es partidaria del uso tradicional de remedios herbales, por lo que se debe dialogar sobre posibles interacciones con su medicación.",
+    "id": "1764548353424"
+  },
+  {
+    "nombre": "María Fernanda Torres",
+    "edad": "57",
+    "tipo_trasplante": "Renal (2018)",
+    "medicacion": "Tacrolimus 2 mg dos veces al día, Mycophenolate mofetil 500 mg tres veces al día, Prednisona 5 mg una vez diaria, Furosemida 40 mg una vez diaria",
+    "adherencia_previa": "Ha sido muy constante con la medicación en los últimos cinco años, aunque ocasionalmente olvida tomar el prednisona por su efecto estomacal; usa recordatorio de alarma en el móvil.",
+    "contexto": "Madre soltera de dos hijos adolescentes, trabaja como profesora de educación primaria en una escuela rural. Se desplaza cada día al centro médico para revisiones y toma de muestras. Tiene un círculo cercano de amigos que la apoyan emocionalmente y su familia cuenta con un seguro estatal que cubre gran parte del tratamiento.",
+    "nivel_educativo": "Licenciatura en Pedagogía",
+    "estilo_comunicacion": "Expresa sus dudas en lenguaje claro, directo; prefiere breves explicaciones durante las consultas para no sentirse abrumada.",
+    "fortalezas": "Apoyo familiar sólido, buena organización personal (calendario de citas), motivación intrínseca por su trabajo con niños que la impulsa a mantenerse saludable.",
+    "dificultades": "Limitado acceso financiero a terapias complementarias; sensibilidad al estómago por la prednisona; estrés laboral debido a la carga docente y el cuidado de sus hijos.",
+    "notas_equipo": "Reforzar recordatorios de medicación, revisar tolerancia gastrointestinal del prednisona, considerar terapia ocupacional para manejo del tiempo. Evaluar posibilidad de apoyo económico adicional o programa de asistencia farmacéutica.",
+    "idiosincrasia": "Rural, con fuerte sentido comunitario; valoriza la tradición familiar y la educación como pilares de su identidad.",
+    "id": "1764561516293"
   }
 ]

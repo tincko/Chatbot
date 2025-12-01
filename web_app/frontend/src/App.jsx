@@ -1,20 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Settings, Bot, User, BrainCircuit, Loader2, Play, Download, Save, X } from 'lucide-react';
+import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, Save, X, History, ArrowLeft, Eye } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+
+const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\nTu tarea en cada turno es:\n1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\nINSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\nFORMATO DE SALIDA:\n<think>\n[Aquí tu análisis interno del modelo COM-B y estrategia]\n</think>\n[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\nESTILO DEL MENSAJE AL PACIENTE:\n- Usá un lenguaje cálido y cercano ('vos').\n- Frases cortas, sin tecnicismos ni jerga clínica.\n- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n- Tono de guía que acompaña, no de autoridad.\n\nEjemplo de salida ideal:\n<think>\nEl paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n</think>\nEntiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!";
 
 function App() {
     const [view, setView] = useState('setup'); // 'setup' or 'chat'
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false); // 'psychologist', 'patient', or false
     const [suggestedReply, setSuggestedReply] = useState('');
     const [models, setModels] = useState([]);
+    const [interactions, setInteractions] = useState([]);
+    const [selectedInteraction, setSelectedInteraction] = useState(null);
 
     const [config, setConfig] = useState({
         chatbot_model: 'deepseek/deepseek-r1-0528-qwen3-8b',
         patient_model: 'mental_llama3.1-8b-mix-sft',
-        psychologist_system_prompt: "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación), pero NUNCA mencionás COM-B, ni CAPACIDAD, ni OPORTUNIDAD, ni MOTIVACIÓN, ni mostrás tu análisis.\n\nTu tarea en cada turno es SOLO esta:\n- Pensar internamente qué le pasa al paciente (capacidad, oportunidad, motivación),\n- y responderle con UN ÚNICO mensaje breve (1 a 3 líneas),\n- cálido, empático y claro,\n- sin tecnicismos,\n- con un micro-nudge práctico (recordatorio, idea sencilla, pequeño paso concreto o refuerzo positivo).\n\nMUY IMPORTANTE (OBLIGATORIO):\n- Tu salida tiene que ser SOLO el mensaje al paciente.\n- NO escribas títulos como 'Análisis', 'Vamos a analizar', 'Posible respuesta'.\n- NO uses listas, bullets, ni explicaciones de tu razonamiento.\n- NO muestres secciones internas, ni uses etiquetas como <think>.\n\nFORMATO DE SALIDA OBLIGATORIO:\n- Una o dos frases dirigidas al paciente, en lenguaje natural.\n- Sin encabezados, sin numeración, sin comentarios meta.\n\nESTILO DEL MENSAJE:\n- Usá un lenguaje cálido y cercano.\n- Usá 'vos'.\n- Frases cortas.\n- Nada de jerga clínica.\n- Sin órdenes médicas ni diagnósticos.\n- Siempre mantené un tono de guía que acompaña, no de autoridad.\n\nEjemplo de estilo (no lo copies literal):\nGracias por contarme eso. Podés probar dejar la medicación en un lugar que veas siempre a la misma hora; a veces un pequeño cambio ayuda mucho. Estoy para acompañarte en esto.",
-        patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu médico o psicólogo sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del psicólogo cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al psicólogo (por ejemplo: 'hola, buen día doctor…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes."
+        psychologist_system_prompt: DEFAULT_PSYCHOLOGIST_PROMPT,
+        patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu médico o psicólogo sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del psicólogo cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al psicólogo (por ejemplo: 'hola, buen día doctor…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes.",
+        // Psychologist params
+        psychologist_temperature: 0.7,
+        psychologist_top_p: 0.9,
+        psychologist_top_k: 40,
+        psychologist_max_tokens: 3000,
+        psychologist_presence_penalty: 0.1,
+        psychologist_frequency_penalty: 0.2,
+        // Patient params
+        patient_temperature: 0.7,
+        patient_top_p: 0.9,
+        patient_top_k: 40,
+        patient_max_tokens: 3000,
+        patient_presence_penalty: 0.1,
+        patient_frequency_penalty: 0.2
     });
 
     const messagesEndRef = useRef(null);
@@ -48,8 +66,35 @@ function App() {
         }
     };
 
+    const fetchInteractions = async () => {
+        try {
+            const res = await fetch('/api/interactions');
+            if (res.ok) {
+                const data = await res.json();
+                setInteractions(data);
+            }
+        } catch (error) {
+            console.error("Error fetching interactions:", error);
+        }
+    };
+
+    const handleViewInteraction = async (filename) => {
+        try {
+            const res = await fetch(`/api/interactions/${filename}`);
+            if (res.ok) {
+                const data = await res.json();
+                setSelectedInteraction(data);
+            }
+        } catch (error) {
+            console.error("Error fetching interaction detail:", error);
+        }
+    };
+
     const startSession = () => {
         setView('chat');
+        if (config.patient_name) {
+            generateInitialSuggestion();
+        }
     };
 
     const endSession = () => {
@@ -59,7 +104,9 @@ function App() {
         }
     };
 
-    const saveInteraction = () => {
+    const [notification, setNotification] = useState(null);
+
+    const saveInteraction = async () => {
         const interactionData = {
             timestamp: new Date().toISOString(),
             config: config,
@@ -70,15 +117,26 @@ function App() {
             }))
         };
 
-        const blob = new Blob([JSON.stringify(interactionData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `interaction_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        try {
+            const res = await fetch('/api/save_interaction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(interactionData)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setMessages([]);
+                setView('setup');
+                setNotification(`Interaction saved successfully as ${data.filename}`);
+                setTimeout(() => setNotification(null), 10000);
+            } else {
+                throw new Error('Failed to save interaction');
+            }
+        } catch (error) {
+            console.error("Error saving interaction:", error);
+            alert("Error saving interaction to server.");
+        }
     };
 
     const sendMessage = async (e) => {
@@ -91,11 +149,12 @@ function App() {
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setSuggestedReply('');
-        setLoading(true);
+        setLoading('psychologist');
 
         try {
             const history = messages.map(m => ({ role: m.role, content: m.content }));
 
+            // Step 1: Get Psychologist Response
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -105,27 +164,90 @@ function App() {
                     chatbot_model: config.chatbot_model,
                     patient_model: config.patient_model,
                     psychologist_system_prompt: config.psychologist_system_prompt,
-                    patient_system_prompt: config.patient_system_prompt
+                    patient_system_prompt: config.patient_system_prompt,
+                    temperature: parseFloat(config.psychologist_temperature),
+                    top_p: parseFloat(config.psychologist_top_p),
+                    top_k: parseInt(config.psychologist_top_k),
+                    max_tokens: parseInt(config.psychologist_max_tokens),
+                    presence_penalty: parseFloat(config.psychologist_presence_penalty),
+                    frequency_penalty: parseFloat(config.psychologist_frequency_penalty)
                 })
             });
 
-            if (!res.ok) throw new Error('Network response was not ok');
-
+            if (!res.ok) throw new Error('Failed to fetch response');
             const data = await res.json();
 
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: data.response
-            }]);
+            const botMsg = { role: 'assistant', content: data.response };
+            setMessages(prev => [...prev, botMsg]);
 
-            if (data.suggested_reply) {
-                setInput(data.suggested_reply);
-                setSuggestedReply(data.suggested_reply);
+            // Step 2: Get Patient Suggestion
+            setLoading('patient');
+
+            const suggestRes = await fetch('/api/suggest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    history: history,
+                    user_message: userMsg.content,
+                    psychologist_response: data.response,
+                    patient_model: config.patient_model,
+                    patient_system_prompt: config.patient_system_prompt,
+                    temperature: parseFloat(config.patient_temperature),
+                    top_p: parseFloat(config.patient_top_p),
+                    top_k: parseInt(config.patient_top_k),
+                    max_tokens: parseInt(config.patient_max_tokens),
+                    presence_penalty: parseFloat(config.patient_presence_penalty),
+                    frequency_penalty: parseFloat(config.patient_frequency_penalty)
+                })
+            });
+
+            if (suggestRes.ok) {
+                const suggestData = await suggestRes.json();
+                setSuggestedReply(suggestData.suggested_reply);
+                setInput(suggestData.suggested_reply);
             }
 
         } catch (error) {
-            console.error("Error sending message:", error);
-            setMessages(prev => [...prev, { role: 'assistant', content: "Error: Could not connect to the backend." }]);
+            console.error("Error in chat flow:", error);
+            setMessages(prev => [...prev, { role: 'assistant', content: "Error: Could not get response from the model." }]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const generateInitialSuggestion = async () => {
+        setLoading('patient');
+        try {
+            // We simulate a "start" of conversation where the psychologist hasn't said anything yet,
+            // or we provide a context prompt to the patient to start talking.
+            // Since the /api/suggest endpoint expects a psychologist_response, we can pass an empty string
+            // or a generic greeting to trigger the patient's opening.
+
+            const suggestRes = await fetch('/api/suggest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    history: [],
+                    user_message: "", // No previous user message
+                    psychologist_response: "Hola. ¿Cómo te sentís hoy?", // Implicit greeting to trigger response
+                    patient_model: config.patient_model,
+                    patient_system_prompt: config.patient_system_prompt,
+                    temperature: parseFloat(config.patient_temperature),
+                    top_p: parseFloat(config.patient_top_p),
+                    top_k: parseInt(config.patient_top_k),
+                    max_tokens: parseInt(config.patient_max_tokens),
+                    presence_penalty: parseFloat(config.patient_presence_penalty),
+                    frequency_penalty: parseFloat(config.patient_frequency_penalty)
+                })
+            });
+
+            if (suggestRes.ok) {
+                const suggestData = await suggestRes.json();
+                setSuggestedReply(suggestData.suggested_reply);
+                setInput(suggestData.suggested_reply);
+            }
+        } catch (error) {
+            console.error("Error generating initial suggestion:", error);
         } finally {
             setLoading(false);
         }
@@ -258,6 +380,33 @@ SOBRE EL PASO DE LOS DÍAS:
         setShowPatientForm(false);
     };
 
+    const selectPatient = (patient) => {
+        const prompt = generatePatientPrompt(patient);
+
+        const patientContext = `
+INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
+- Nombre: ${patient.nombre}
+- Edad: ${patient.edad}
+- Tipo de trasplante: ${patient.tipo_trasplante}
+- Medicación: ${patient.medicacion}
+- Adherencia previa: ${patient.adherencia_previa}
+- Contexto social: ${patient.contexto}
+- Nivel educativo: ${patient.nivel_educativo}
+- Estilo de comunicación: ${patient.estilo_comunicacion}
+- Fortalezas: ${patient.fortalezas}
+- Dificultades: ${patient.dificultades}
+- Notas del equipo: ${patient.notas_equipo}
+- Idiosincrasia: ${patient.idiosincrasia}
+`;
+
+        setConfig({
+            ...config,
+            patient_system_prompt: prompt,
+            patient_name: patient.nombre,
+            psychologist_system_prompt: DEFAULT_PSYCHOLOGIST_PROMPT + "\n" + patientContext
+        });
+    };
+
     const handleEditPatient = (patient) => {
         setNewPatient(patient);
         setShowPatientForm(true);
@@ -279,11 +428,6 @@ SOBRE EL PASO DE LOS DÍAS:
             await savePatientsToBackend(updatedPatients);
         }
     };
-
-    const selectPatient = (p) => {
-        setConfig({ ...config, patient_system_prompt: generatePatientPrompt(p) });
-    };
-
     if (view === 'setup') {
         return (
             <div className="app-container setup-view">
@@ -292,7 +436,16 @@ SOBRE EL PASO DE LOS DÍAS:
                         <BrainCircuit className="icon-logo" />
                         <h1>DualMind <span className="subtitle">Setup</span></h1>
                     </div>
+                    <button className="btn-secondary btn-sm" onClick={() => { setView('history'); fetchInteractions(); }}>
+                        <History size={16} /> History
+                    </button>
                 </header>
+
+                {notification && (
+                    <div className="notification success">
+                        {notification}
+                    </div>
+                )}
 
                 <div className="setup-panel">
                     <h2>Session Configuration</h2>
@@ -315,6 +468,71 @@ SOBRE EL PASO DE LOS DÍAS:
                                 onChange={e => setConfig({ ...config, psychologist_system_prompt: e.target.value })}
                                 rows={4}
                             />
+                        </div>
+
+                        <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                            <div className="form-group">
+                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Temperature <span>{config.psychologist_temperature}</span>
+                                </label>
+                                <input
+                                    type="range" min="0" max="2" step="0.1"
+                                    value={config.psychologist_temperature}
+                                    onChange={e => setConfig({ ...config, psychologist_temperature: e.target.value })}
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Top P <span>{config.psychologist_top_p}</span>
+                                </label>
+                                <input
+                                    type="range" min="0" max="1" step="0.05"
+                                    value={config.psychologist_top_p}
+                                    onChange={e => setConfig({ ...config, psychologist_top_p: e.target.value })}
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Presence Penalty <span>{config.psychologist_presence_penalty}</span>
+                                </label>
+                                <input
+                                    type="range" min="-2" max="2" step="0.1"
+                                    value={config.psychologist_presence_penalty}
+                                    onChange={e => setConfig({ ...config, psychologist_presence_penalty: e.target.value })}
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    Frequency Penalty <span>{config.psychologist_frequency_penalty}</span>
+                                </label>
+                                <input
+                                    type="range" min="-2" max="2" step="0.1"
+                                    value={config.psychologist_frequency_penalty}
+                                    onChange={e => setConfig({ ...config, psychologist_frequency_penalty: e.target.value })}
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Top K</label>
+                                <input
+                                    type="number"
+                                    value={config.psychologist_top_k}
+                                    onChange={e => setConfig({ ...config, psychologist_top_k: e.target.value })}
+                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Max Tokens</label>
+                                <input
+                                    type="number"
+                                    value={config.psychologist_max_tokens}
+                                    onChange={e => setConfig({ ...config, psychologist_max_tokens: e.target.value })}
+                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -460,13 +678,159 @@ SOBRE EL PASO DE LOS DÍAS:
                                 onChange={e => setConfig({ ...config, patient_system_prompt: e.target.value })}
                                 rows={8}
                             />
+                            <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        Temperature <span>{config.patient_temperature}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="0" max="2" step="0.1"
+                                        value={config.patient_temperature}
+                                        onChange={e => setConfig({ ...config, patient_temperature: e.target.value })}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        Top P <span>{config.patient_top_p}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="0" max="1" step="0.05"
+                                        value={config.patient_top_p}
+                                        onChange={e => setConfig({ ...config, patient_top_p: e.target.value })}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        Presence Penalty <span>{config.patient_presence_penalty}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="-2" max="2" step="0.1"
+                                        value={config.patient_presence_penalty}
+                                        onChange={e => setConfig({ ...config, patient_presence_penalty: e.target.value })}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        Frequency Penalty <span>{config.patient_frequency_penalty}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="-2" max="2" step="0.1"
+                                        value={config.patient_frequency_penalty}
+                                        onChange={e => setConfig({ ...config, patient_frequency_penalty: e.target.value })}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Top K</label>
+                                    <input
+                                        type="number"
+                                        value={config.patient_top_k}
+                                        onChange={e => setConfig({ ...config, patient_top_k: e.target.value })}
+                                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Max Tokens</label>
+                                    <input
+                                        type="number"
+                                        value={config.patient_max_tokens}
+                                        onChange={e => setConfig({ ...config, patient_max_tokens: e.target.value })}
+                                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </div>
+
+
 
                     <button className="btn-primary start-btn" onClick={startSession}>
                         <Play size={20} /> Start Session
                     </button>
                 </div>
+
+            </div>
+        );
+    }
+
+
+
+    if (view === 'history') {
+        return (
+            <div className="app-container history-view">
+                <header className="header">
+                    <div className="logo">
+                        <BrainCircuit className="icon-logo" />
+                        <h1>DualMind <span className="subtitle">History</span></h1>
+                    </div>
+                    <button className="btn-secondary btn-sm" onClick={() => setView('setup')}>
+                        <ArrowLeft size={16} /> Back to Setup
+                    </button>
+                </header>
+                <div className="history-list" style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+                    {interactions.length === 0 ? (
+                        <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No saved interactions found.</p>
+                    ) : (
+                        <div style={{ display: 'grid', gap: '1rem' }}>
+                            {interactions.map((interaction, idx) => (
+                                <div key={idx} style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                                            <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>{interaction.patient_name}</h3>
+                                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                                                {new Date(interaction.timestamp).toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                            Models: <span style={{ color: 'var(--accent)' }}>{interaction.chatbot_model}</span> vs <span style={{ color: 'var(--accent)' }}>{interaction.patient_model}</span>
+                                        </div>
+                                    </div>
+                                    <button className="btn-secondary btn-sm" onClick={() => handleViewInteraction(interaction.filename)}>
+                                        <Eye size={16} /> View Chat
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {selectedInteraction && (
+                    <div className="modal-overlay">
+                        <div className="modal-content" style={{ maxWidth: '900px', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+                            <div className="modal-header">
+                                <h3>Interaction Details</h3>
+                                <button className="btn-close" onClick={() => setSelectedInteraction(null)}>×</button>
+                            </div>
+                            <div className="chat-area" style={{ flex: 1, overflowY: 'auto', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '0.5rem' }}>
+                                {selectedInteraction.messages.map((msg, idx) => (
+                                    <div key={idx} className={`message-row ${msg.role}`}>
+                                        <div className="avatar">
+                                            {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
+                                        </div>
+                                        <div className="message-content">
+                                            <div className="text">
+                                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                            </div>
+                                            {msg.suggested_reply_used && (
+                                                <div style={{ fontSize: '0.75rem', color: '#6ee7b7', marginTop: '0.25rem' }}>
+                                                    (Used suggested reply)
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="modal-actions" style={{ marginTop: '1rem', borderTop: 'none' }}>
+                                <button className="btn-secondary btn-sm" onClick={() => setSelectedInteraction(null)}>
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -477,41 +841,79 @@ SOBRE EL PASO DE LOS DÍAS:
                 <div className="logo">
                     <BrainCircuit className="icon-logo" />
                     <h1>DualMind <span className="subtitle">Therapy Session</span></h1>
+                    {config.patient_name && (
+                        <span style={{
+                            marginLeft: '1rem',
+                            fontSize: '0.9rem',
+                            color: '#94a3b8',
+                            background: 'rgba(255,255,255,0.1)',
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '999px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}>
+                            <User size={14} />
+                            {config.patient_name}
+                        </span>
+                    )}
                 </div>
-                <button className="btn-icon" onClick={endSession} title="End Session & Configure">
-                    <Settings size={20} />
+                <button className="btn-icon" onClick={() => setView('setup')}>
+                    <X size={24} />
                 </button>
             </header>
 
             <div className="chat-area">
-                {messages.length === 0 && (
+                {messages.length === 0 ? (
                     <div className="welcome-screen">
                         <BrainCircuit size={64} className="welcome-icon" />
-                        <h2>Session Started</h2>
-                        <p>Say "Hello" to start the conversation.</p>
+                        <h2>Ready to Start</h2>
+                        <p>Type a message to begin the therapy simulation.</p>
                     </div>
-                )}
-
-                {messages.map((msg, idx) => (
-                    <div key={idx} className={`message-row ${msg.role}`}>
-                        <div className="avatar">
-                            {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
-                        </div>
-                        <div className="message-content">
-                            <div className="text">
-                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                ) : (
+                    messages.map((msg, idx) => (
+                        <div key={idx} className={`message-row ${msg.role}`}>
+                            <div className="avatar">
+                                {msg.role === 'user' ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                        <User size={20} />
+                                        {config.patient_name && (
+                                            <span style={{ fontSize: '0.65rem', marginTop: '2px', color: '#94a3b8', maxWidth: '60px', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {config.patient_name}
+                                            </span>
+                                        )}
+                                    </div>
+                                ) : <Bot size={20} />}
+                            </div>
+                            <div className="message-content">
+                                <div className="text">
+                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                </div>
+                                {msg.suggested_reply_used && (
+                                    <div style={{ fontSize: '0.75rem', color: '#6ee7b7', marginTop: '0.25rem' }}>
+                                        (Used suggested reply)
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    </div>
-                ))}
-
-                {loading && (
-                    <div className="message-row assistant loading">
+                    ))
+                )}
+                {loading === 'psychologist' && (
+                    <div className="message-row assistant">
                         <div className="avatar"><Bot size={20} /></div>
                         <div className="message-content">
                             <div className="typing-indicator">
-                                <Loader2 className="spinner" size={16} />
-                                <span>Psychologist is thinking...</span>
+                                <Loader2 className="spinner" size={16} /> Thinking ({config.chatbot_model})...
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {loading === 'patient' && (
+                    <div className="message-row assistant">
+                        <div className="avatar"><Bot size={20} /></div>
+                        <div className="message-content">
+                            <div className="typing-indicator">
+                                <Loader2 className="spinner" size={16} /> Generating suggestion ({config.patient_model})...
                             </div>
                         </div>
                     </div>
@@ -519,21 +921,23 @@ SOBRE EL PASO DE LOS DÍAS:
                 <div ref={messagesEndRef} />
             </div>
 
-            <form className="input-area" onSubmit={sendMessage}>
-                <input
-                    type="text"
-                    placeholder="Type your message..."
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    disabled={loading}
-                />
-                <button type="submit" disabled={loading || !input.trim()}>
-                    <Send size={20} />
-                </button>
-                <button type="button" onClick={saveInteraction} title="Save Interaction" className="btn-secondary">
-                    <Download size={20} />
-                </button>
-            </form>
+            <div className="input-area">
+                <form onSubmit={sendMessage} className="input-form">
+                    <input
+                        type="text"
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        placeholder="Type your message..."
+                        disabled={loading}
+                    />
+                    <button type="submit" disabled={loading || !input.trim()}>
+                        <Send size={20} />
+                    </button>
+                    <button type="button" onClick={saveInteraction} title="Save Interaction" className="btn-secondary">
+                        <Download size={20} />
+                    </button>
+                </form>
+            </div>
         </div>
     );
 }

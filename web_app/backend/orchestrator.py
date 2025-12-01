@@ -12,13 +12,17 @@ class DualLLMOrchestrator:
     def __init__(self, api_url=None):
         self.api_url = api_url or os.getenv("LLM_API_URL", DEFAULT_API_URL)
 
-    def _call_llm(self, model, messages, temperature=0.7, max_tokens=2000):
+    def _call_llm(self, model, messages, temperature=0.7, max_tokens=2000, top_p=0.9, top_k=40, presence_penalty=0.1, frequency_penalty=0.2):
         try:
             payload = {
                 "model": model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": max_tokens
+                "max_tokens": max_tokens,
+                "top_p": top_p,
+                "top_k": top_k,
+                "presence_penalty": presence_penalty,
+                "frequency_penalty": frequency_penalty
             }
             # Increased timeout to allow for model loading
             response = requests.post(self.api_url, json=payload, timeout=1200)
@@ -32,20 +36,35 @@ class DualLLMOrchestrator:
             return f"[Error: {str(e)}]"
 
     def _clean_think_tags(self, text: str) -> str:
-        """Removes <think>...</think> blocks and other model artifacts."""
-        # Remove <think> blocks
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        """Removes thinking blocks and other model artifacts to extract the final response."""
         
-        # Remove <|channel|>... tags (common in some fine-tunes)
+        # 1. Remove standard <think> blocks (closed and unclosed)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL)
+        
+        # 2. Remove other common reasoning markers used by various models
+        # e.g. <|thought|>, <reasoning>, etc.
+        text = re.sub(r"<\|thought\|>.*?(<\|/thought\|>|$)", "", text, flags=re.DOTALL)
+        text = re.sub(r"<reasoning>.*?(</reasoning>|$)", "", text, flags=re.DOTALL)
+        
+        # 3. Remove <|channel|>... tags (common in some fine-tunes)
         text = re.sub(r"<\|.*?\|>.*?(?=\b[A-ZÁÉÍÓÚÑ]|$)", "", text, flags=re.DOTALL) 
         text = re.sub(r"<\|.*?\|>", "", text)
         
-        # Remove specific artifacts like <｜begin of sentence｜>Human:
+        # 4. Remove specific artifacts like <｜begin of sentence｜>Human:
         text = re.sub(r"<｜.*?｜>Human:", "", text, flags=re.IGNORECASE)
         text = re.sub(r"<｜.*?｜>", "", text)
 
-        # Remove common reasoning preambles (heuristic)
-        if re.match(r"^(We are asked|Here is a suggestion|The user wants|So reply)", text, re.IGNORECASE):
+        # 5. Handle models that output "Thought: ... Response: ..." pattern
+        # If we find a clear "Response:" or "Answer:" marker, take everything after it.
+        # This is a strong heuristic for models that don't use XML tags for thinking.
+        split_match = re.split(r"(?:^|\n)(?:Response|Answer|Respuesta|Contestación):\s*", text, flags=re.IGNORECASE)
+        if len(split_match) > 1:
+            # Return the last part, which should be the actual response
+            return split_match[-1].strip()
+
+        # 6. Remove common reasoning preambles (heuristic fallback)
+        if re.match(r"^(We are asked|Here is a suggestion|The user wants|So reply|Thinking Process:)", text, re.IGNORECASE):
             # Try to find the last quoted string
             quotes = re.findall(r'"([^"]*)"', text)
             if quotes:
@@ -58,7 +77,7 @@ class DualLLMOrchestrator:
 
         return text.strip()
 
-    def get_patient_suggestion(self, patient_model, history, psychologist_message, system_prompt=None):
+    def get_patient_suggestion(self, patient_model, history, psychologist_message, system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2):
         """
         Generates a suggested reply for the patient (user) based on the psychologist's message.
         """
@@ -105,47 +124,49 @@ class DualLLMOrchestrator:
         # Add the psychologist's latest message as the latest input from the 'user' (interlocutor)
         messages.append({"role": "user", "content": psychologist_message})
 
-        return self._call_llm(patient_model, messages, temperature=0.7)
+        print(f"--- Calling Patient Helper ({patient_model}) ---")
+        print(f"System Prompt: {actual_prompt[:100]}...")
 
-    def chat(self, chatbot_model, patient_model, history, user_message, psychologist_system_prompt=None, patient_system_prompt=None):
+        return self._call_llm(
+            patient_model, 
+            messages, 
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            max_tokens=max_tokens,
+            presence_penalty=presence_penalty,
+            frequency_penalty=frequency_penalty
+        )
+
+    def chat_psychologist(self, chatbot_model, history, user_message, psychologist_system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2):
         """
-        Main chat flow:
-        1. User (Patient) sends message.
-        2. Chatbot (Psychologist) responds.
-        3. System cleans <think> tags from Psychologist response.
-        4. Patient Model (Helper) suggests next reply for User.
+        Step 1: Chatbot (Psychologist) responds.
         """
-        
-        # 1. Chatbot (Psychologist) Step
         default_psico_prompt = (
             "Sos un asistente especializado en salud conductual y trasplante renal.\n"
-            "Actuás como un psicólogo que usa internamente el modelo COM-B "
-            "(Capacidad – Oportunidad – Motivación), pero NUNCA mencionás COM-B, "
-            "ni CAPACIDAD, ni OPORTUNIDAD, ni MOTIVACIÓN, ni mostrás tu análisis.\n\n"
-            "Tu tarea en cada turno es SOLO esta:\n"
-            "- Pensar internamente qué le pasa al paciente (capacidad, oportunidad, motivación),\n"
-            "- y responderle con UN ÚNICO mensaje breve (1 a 3 líneas),\n"
-            "- cálido, empático y claro,\n"
-            "- sin tecnicismos,\n"
-            "- con un micro-nudge práctico (recordatorio, idea sencilla, pequeño paso concreto o refuerzo positivo).\n\n"
-            "MUY IMPORTANTE (OBLIGATORIO):\n"
-            "- Tu salida tiene que ser SOLO el mensaje al paciente.\n"
-            "- NO escribas títulos como 'Análisis', 'Vamos a analizar', 'Posible respuesta'.\n"
-            "- NO uses listas, bullets, ni explicaciones de tu razonamiento.\n"
-            "- NO muestres secciones internas, ni uses etiquetas como <think>.\n\n"
-            "FORMATO DE SALIDA OBLIGATORIO:\n"
-            "- Una o dos frases dirigidas al paciente, en lenguaje natural.\n"
-            "- Sin encabezados, sin numeración, sin comentarios meta.\n\n"
-            "ESTILO DEL MENSAJE:\n"
-            "- Usá un lenguaje cálido y cercano.\n"
-            "- Usá 'vos'.\n"
-            "- Frases cortas.\n"
-            "- Nada de jerga clínica.\n"
-            "- Sin órdenes médicas ni diagnósticos.\n"
-            "- Siempre mantené un tono de guía que acompaña, no de autoridad.\n\n"
-            "Ejemplo de estilo (no lo copies literal):\n"
-            "Gracias por contarme eso. Podés probar dejar la medicación en un lugar que veas siempre a la misma hora; "
-            "a veces un pequeño cambio ayuda mucho. Estoy para acompañarte en esto."
+            "Actuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\n"
+            "Tu tarea en cada turno es:\n"
+            "1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n"
+            "2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\n"
+            "INSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n"
+            "- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n"
+            "- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n"
+            "- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\n"
+            "FORMATO DE SALIDA:\n"
+            "<think>\n"
+            "[Aquí tu análisis interno del modelo COM-B y estrategia]\n"
+            "</think>\n"
+            "[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\n"
+            "ESTILO DEL MENSAJE AL PACIENTE:\n"
+            "- Usá un lenguaje cálido y cercano ('vos').\n"
+            "- Frases cortas, sin tecnicismos ni jerga clínica.\n"
+            "- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n"
+            "- Tono de guía que acompaña, no de autoridad.\n\n"
+            "Ejemplo de salida ideal:\n"
+            "<think>\n"
+            "El paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n"
+            "</think>\n"
+            "Entiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!"
         )
         
         actual_psico_prompt = psychologist_system_prompt if psychologist_system_prompt else default_psico_prompt
@@ -156,25 +177,42 @@ class DualLLMOrchestrator:
             {"role": "user", "content": user_message}
         ]
 
-        raw_response = self._call_llm(chatbot_model, messages, temperature=0.7)
-        
-        # 2. Clean <think> tags
-        clean_response = self._clean_think_tags(raw_response)
+        print(f"--- Calling Psychologist ({chatbot_model}) ---")
+        print(f"System Prompt: {actual_psico_prompt[:100]}...")
 
-        # 3. Patient Helper Step (Suggest next reply)
+        raw_response = self._call_llm(
+            chatbot_model, 
+            messages, 
+            temperature=temperature, 
+            max_tokens=max_tokens,
+            top_p=top_p,
+            top_k=top_k,
+            presence_penalty=presence_penalty,
+            frequency_penalty=frequency_penalty
+        )
+        
+        return self._clean_think_tags(raw_response)
+
+    def generate_suggestion_only(self, patient_model, history, user_message, psychologist_response, patient_system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2):
+        """
+        Step 2: Patient Helper suggests next reply.
+        """
         updated_history = history + [{"role": "user", "content": user_message}]
         
         suggested_reply = self._clean_think_tags(self.get_patient_suggestion(
             patient_model, 
             updated_history, 
-            clean_response,
-            system_prompt=patient_system_prompt
+            psychologist_response,
+            system_prompt=patient_system_prompt,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            max_tokens=max_tokens,
+            presence_penalty=presence_penalty,
+            frequency_penalty=frequency_penalty
         ))
 
-        return {
-            "response": clean_response,
-            "suggested_reply": suggested_reply
-        }
+        return suggested_reply
 
     def list_models(self):
         try:
@@ -183,7 +221,9 @@ class DualLLMOrchestrator:
             response = requests.get(url, timeout=20)
             if response.status_code == 200:
                 data = response.json()
-                return [m["id"] for m in data["data"]]
+                models = [m["id"] for m in data["data"]]
+                if models:
+                    return models
         except:
             pass
         return [DEFAULT_MODEL_CHATBOT, DEFAULT_MODEL_PATIENT]
@@ -200,20 +240,23 @@ class DualLLMOrchestrator:
         
         user_prompt = (
             "Genera un perfil JSON de un paciente de trasplante renal.\n"
-            "Campos requeridos:\n"
+            "IMPORTANTE: Varía la edad (entre 18 y 80 años), el género y el contexto social.\n"
+            "Asegúrate de que todas las características (contexto, estilo de comunicación, dificultades, etc.) "
+            "sean COHERENTES con la edad y situación de vida elegida.\n\n"
+            "Campos requeridos en el JSON:\n"
             "{\n"
-            '  "nombre": "Nombre Ficticio",\n'
-            '  "edad": 40,\n'
-            '  "tipo_trasplante": "Renal (año)",\n'
-            '  "medicacion": "Lista de medicamentos",\n'
-            '  "adherencia_previa": "Breve descripción",\n'
-            '  "contexto": "Situación social",\n'
-            '  "nivel_educativo": "Nivel",\n'
-            '  "estilo_comunicacion": "Cómo se expresa",\n'
-            '  "fortalezas": "Puntos fuertes",\n'
-            '  "dificultades": "Obstáculos",\n'
-            '  "notas_equipo": "Sugerencias",\n'
-            '  "idiosincrasia": "Rasgos culturales"\n'
+            '  "nombre": "Nombre y Apellido (ficticio)",\n'
+            '  "edad": "Número entero (ej: 25, 48, 72)",\n'
+            '  "tipo_trasplante": "Renal (año del trasplante)",\n'
+            '  "medicacion": "Lista realista de inmunosupresores y otros medicamentos",\n'
+            '  "adherencia_previa": "Descripción de su historial de toma de medicación",\n'
+            '  "contexto": "Situación laboral, familiar y social (coherente con la edad)",\n'
+            '  "nivel_educativo": "Nivel de estudios alcanzado",\n'
+            '  "estilo_comunicacion": "Cómo se expresa (formal, coloquial, breve, detallado, etc.)",\n'
+            '  "fortalezas": "Recursos personales o sociales que ayudan a su tratamiento",\n'
+            '  "dificultades": "Barreras específicas (cognitivas, económicas, emocionales, etc.)",\n'
+            '  "notas_equipo": "Sugerencias clínicas para el abordaje",\n'
+            '  "idiosincrasia": "Rasgos culturales o de personalidad específicos (ej: uruguayo, rural, urbano)"\n'
             "}"
         )
 
