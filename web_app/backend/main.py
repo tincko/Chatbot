@@ -1,23 +1,27 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from orchestrator import DualLLMOrchestrator
-import os
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
 import json
+import os
+import shutil
+import re
+from pypdf import PdfReader
+from orchestrator import DualLLMOrchestrator
+from rag_manager import RAGManager
 
-app = FastAPI(title="Dual-LLM Chat Interface")
+app = FastAPI()
 
-# Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify the frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 orchestrator = DualLLMOrchestrator()
+rag_manager = RAGManager()
 
 class ChatRequest(BaseModel):
     message: str
@@ -32,6 +36,7 @@ class ChatRequest(BaseModel):
     max_tokens: Optional[int] = 600
     presence_penalty: Optional[float] = 0.1
     frequency_penalty: Optional[float] = 0.2
+    rag_documents: Optional[List[str]] = []
 
 class ChatResponse(BaseModel):
     response: str
@@ -62,6 +67,18 @@ def get_models():
 @app.post("/api/chat", response_model=ChatResponse)
 def chat_endpoint(req: ChatRequest):
     try:
+        # RAG Retrieval
+        context_text = ""
+        if req.rag_documents:
+            print(f"Performing RAG search in documents: {req.rag_documents}")
+            retrieved_docs = rag_manager.query(req.message, n_results=3, filter_filenames=req.rag_documents)
+            if retrieved_docs:
+                context_text = "\n\n=== RELEVANT CONTEXT FROM DOCUMENTS ===\n"
+                for i, doc in enumerate(retrieved_docs):
+                    context_text += f"--- Excerpt {i+1} ---\n{doc}\n"
+                context_text += "=======================================\n"
+                print(f"RAG Context length: {len(context_text)}")
+
         response = orchestrator.chat_psychologist(
             req.chatbot_model,
             req.history,
@@ -72,10 +89,12 @@ def chat_endpoint(req: ChatRequest):
             req.top_k,
             req.max_tokens,
             req.presence_penalty,
-            req.frequency_penalty
+            req.frequency_penalty,
+            context=context_text 
         )
         return ChatResponse(response=response)
     except Exception as e:
+        print(f"Error in chat_endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/suggest", response_model=SuggestionResponse)
@@ -121,6 +140,36 @@ def save_patients(patients: List[Dict[str, Any]]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+PROMPTS_FILE = os.path.join(BASE_DIR, "prompts.json")
+
+@app.get("/api/prompts")
+def get_prompts():
+    if os.path.exists(PROMPTS_FILE):
+        try:
+            with open(PROMPTS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error reading prompts file: {e}")
+            return {}
+    return {}
+
+@app.post("/api/prompts")
+def save_prompts(prompts: Dict[str, str]):
+    try:
+        # Merge with existing if any
+        existing = {}
+        if os.path.exists(PROMPTS_FILE):
+            with open(PROMPTS_FILE, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        
+        existing.update(prompts)
+        
+        with open(PROMPTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=2, ensure_ascii=False)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/generate_profile")
 def generate_profile(request: GenerateProfileRequest):
     try:
@@ -129,7 +178,7 @@ def generate_profile(request: GenerateProfileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-DIALOGOS_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "dialogos")
+DIALOGOS_DIR = os.path.join(BASE_DIR, "dialogos")
 if not os.path.exists(DIALOGOS_DIR):
     os.makedirs(DIALOGOS_DIR)
 
@@ -160,7 +209,7 @@ def get_interactions():
         files = [f for f in os.listdir(DIALOGOS_DIR) if f.endswith('.json')]
         files.sort(reverse=True) # Newest first
         
-        import re # Local import to avoid changing top of file
+        # import re # Local import to avoid changing top of file - now global
         
         for filename in files:
             try:
@@ -208,6 +257,158 @@ def get_interaction_detail(filename: str):
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/interactions/{filename}")
+def delete_interaction(filename: str):
+    filepath = os.path.join(DIALOGOS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Interaction not found")
+    
+    try:
+        os.remove(filepath)
+        return {"status": "success", "message": "Interaction deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AnalyzeRequest(BaseModel):
+    filenames: List[str]
+    model: str
+    prompt: str
+    document_filenames: Optional[List[str]] = []
+
+DOCUMENTS_DIR = os.path.join(BASE_DIR, "documentos")
+if not os.path.exists(DOCUMENTS_DIR):
+    os.makedirs(DOCUMENTS_DIR)
+
+@app.post("/api/upload_document")
+async def upload_document(files: List[UploadFile] = File(...), chunk_size: int = 1000, overlap: int = 200):
+    saved_filenames = []
+    try:
+        for file in files:
+            filepath = os.path.join(DOCUMENTS_DIR, file.filename)
+            with open(filepath, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            saved_filenames.append(file.filename)
+            
+            # Index the document
+            rag_manager.add_document(file.filename, filepath, chunk_size=chunk_size, overlap=overlap)
+            
+        return {"status": "success", "filenames": saved_filenames}
+    except Exception as e:
+        print(f"Error uploading document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/documents")
+def get_documents():
+    if not os.path.exists(DOCUMENTS_DIR):
+        return []
+    files = [f for f in os.listdir(DOCUMENTS_DIR) if os.path.isfile(os.path.join(DOCUMENTS_DIR, f))]
+    return files
+
+@app.delete("/api/documents/{filename}")
+def delete_document(filename: str):
+    filepath = os.path.join(DOCUMENTS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    try:
+        os.remove(filepath)
+        # Also remove from vector db
+        rag_manager.delete_document(filename)
+        return {"status": "success", "message": "Document deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ReindexRequest(BaseModel):
+    chunk_size: int = 1000
+    overlap: int = 200
+
+@app.post("/api/reindex_documents")
+def reindex_documents(req: ReindexRequest):
+    try:
+        # Clear existing collection
+        rag_manager.clear_collection()
+        
+        files = []
+        # Re-index all files in DOCUMENTS_DIR
+        if os.path.exists(DOCUMENTS_DIR):
+            files = [f for f in os.listdir(DOCUMENTS_DIR) if os.path.isfile(os.path.join(DOCUMENTS_DIR, f))]
+            for filename in files:
+                filepath = os.path.join(DOCUMENTS_DIR, filename)
+                rag_manager.add_document(filename, filepath, chunk_size=req.chunk_size, overlap=req.overlap)
+        
+        return {"status": "success", "message": f"Re-indexed {len(files)} documents."}
+    except Exception as e:
+        print(f"Error re-indexing: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analyze_interactions")
+def analyze_interactions_endpoint(req: AnalyzeRequest):
+    try:
+        # 1. Load content of all selected files
+        interactions_content = []
+        for filename in req.filenames:
+            filepath = os.path.join(DIALOGOS_DIR, filename)
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                    # Extract relevant info for analysis
+                    timestamp = data.get('timestamp', 'Unknown Date')
+                    config = data.get('config', {})
+                    messages = data.get('messages', [])
+                    
+                    # Extract patient name from config (similar logic to get_interactions)
+                    patient_name = "Unknown Patient"
+                    patient_prompt = config.get('patient_system_prompt', '')
+                    # import re # This import is now global
+                    match = re.search(r"Sos el PACIENTE[:\s]+(.*?)(?:,|\.|;|\n|$)", patient_prompt, re.IGNORECASE)
+                    if match:
+                        patient_name = match.group(1).strip()
+                    
+                    # Format conversation
+                    conversation_text = f"--- Interaction Date: {timestamp} | Patient: {patient_name} ---\n"
+                    for msg in messages:
+                        role = msg.get('role', 'unknown')
+                        content = msg.get('content', '')
+                        conversation_text += f"{role.upper()}: {content}\n"
+                    
+                    interactions_content.append(conversation_text)
+        
+        if not interactions_content and not req.document_filenames: # Modified condition
+            return {"analysis": "No valid interactions or documents found to analyze."}
+            
+        full_context = "\n\n".join(interactions_content)
+
+        # 2. Append Documents Content if any
+        if req.document_filenames:
+            full_context += "\n\n=== REFERENCE DOCUMENTS ===\n"
+            for doc_name in req.document_filenames:
+                doc_path = os.path.join(DOCUMENTS_DIR, doc_name)
+                if os.path.exists(doc_path):
+                    try:
+                        content = ""
+                        if doc_name.lower().endswith('.pdf'):
+                            reader = PdfReader(doc_path)
+                            for page in reader.pages:
+                                content += page.extract_text() + "\n"
+                        else:
+                            # Try reading as text
+                            with open(doc_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
+                        
+                        full_context += f"\n--- Document: {doc_name} ---\n{content}\n"
+                    except Exception as e:
+                        print(f"Error reading document {doc_name}: {e}")
+                        full_context += f"\n--- Document: {doc_name} (Error reading content) ---\n"
+        
+        # 3. Call Orchestrator to analyze
+        analysis = orchestrator.analyze_interactions(req.model, full_context, req.prompt)
+        return {"analysis": analysis}
+
+    except Exception as e:
+        print(f"Error analyzing interactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

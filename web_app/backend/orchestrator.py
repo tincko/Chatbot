@@ -30,10 +30,19 @@ class DualLLMOrchestrator:
             data = response.json()
             return data["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"Error calling LLM {model}: {e}")
-            if 'response' in locals():
-                 print(f"Raw response: {response.text}")
-            return f"[Error: {str(e)}]"
+            error_msg = str(e)
+            if 'response' in locals() and response is not None:
+                try:
+                    error_detail = response.json()
+                    if 'error' in error_detail:
+                        error_msg += f" Details: {json.dumps(error_detail['error'])}"
+                    else:
+                        error_msg += f" Response: {response.text}"
+                except:
+                    error_msg += f" Response: {response.text}"
+            
+            print(f"Error calling LLM {model}: {error_msg}")
+            return f"[Error: {error_msg}]"
 
     def _clean_think_tags(self, text: str) -> str:
         """Removes thinking blocks and other model artifacts to extract the final response."""
@@ -138,7 +147,7 @@ class DualLLMOrchestrator:
             frequency_penalty=frequency_penalty
         )
 
-    def chat_psychologist(self, chatbot_model, history, user_message, psychologist_system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2):
+    def chat_psychologist(self, chatbot_model, history, user_message, psychologist_system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2, context=None):
         """
         Step 1: Chatbot (Psychologist) responds.
         """
@@ -170,6 +179,9 @@ class DualLLMOrchestrator:
         )
         
         actual_psico_prompt = psychologist_system_prompt if psychologist_system_prompt else default_psico_prompt
+
+        if context:
+            actual_psico_prompt += f"\n\n{context}"
 
         messages = [
             {"role": "system", "content": actual_psico_prompt},
@@ -339,3 +351,42 @@ class DualLLMOrchestrator:
                 "notas_equipo": "-",
                 "idiosincrasia": "-"
             }
+
+    def analyze_interactions(self, model, interactions_text, system_prompt=None):
+        """
+        Analyzes a set of interactions using the specified LLM.
+        """
+        if not system_prompt:
+            system_prompt = (
+                "Sos un supervisor clínico experto en trasplante renal y salud conductual.\n"
+                "Tu tarea es analizar las transcripciones de sesiones simuladas entre un Psicólogo (IA) y un Paciente (IA).\n"
+                "Debes evaluar la calidad de la intervención del psicólogo, la coherencia del paciente y el progreso general.\n\n"
+                "Estructura tu análisis en los siguientes puntos:\n"
+                "1. RESUMEN GENERAL: Breve descripción de los temas tratados.\n"
+                "2. EVALUACIÓN DEL PSICÓLOGO: ¿Fue empático? ¿Usó estrategias claras? ¿Respetó el modelo COM-B?\n"
+                "3. EVALUACIÓN DEL PACIENTE: ¿Fue realista? ¿Mantuvo la coherencia con su perfil?\n"
+                "4. CONCLUSIONES Y RECOMENDACIONES: ¿Qué se podría mejorar en el prompt o configuración?"
+            )
+        
+        # Truncate context if it's too long. 
+        # User has a 4096 token limit (~16k chars). We'll limit input to ~12k chars to leave room for response.
+        MAX_CHARS = 12000
+        if len(interactions_text) > MAX_CHARS:
+            print(f"Warning: Context too long ({len(interactions_text)} chars). Truncating to {MAX_CHARS} chars.")
+            interactions_text = interactions_text[:MAX_CHARS] + "\n\n[...TRUNCATED DUE TO LENGTH...]"
+
+        user_prompt = f"Aquí está el contexto para el análisis (transcripciones de interacciones y documentos de referencia si los hay):\n\n{interactions_text}\n\nPor favor, genera el análisis clínico."
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        print(f"--- Analyzing Interactions with {model} ---")
+        
+        return self._clean_think_tags(self._call_llm(
+            model,
+            messages,
+            temperature=0.7,
+            max_tokens=2000
+        ))

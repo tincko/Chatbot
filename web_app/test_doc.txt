@@ -1,0 +1,7 @@
+This is a test document for RAG.
+It contains information about the patient's medication adherence.
+The patient often forgets to take their medication when they are busy at work.
+They find it helpful to set an alarm on their phone.
+This document is used to test the chunking and retrieval capabilities of the system.
+We want to verify that small chunks are created and that overlap works as expected.
+End of test document.

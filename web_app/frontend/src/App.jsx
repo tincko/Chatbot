@@ -1,18 +1,59 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, Save, X, History, ArrowLeft, Eye } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { jsPDF } from 'jspdf';
 
 const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\nTu tarea en cada turno es:\n1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\nINSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\nFORMATO DE SALIDA:\n<think>\n[Aquí tu análisis interno del modelo COM-B y estrategia]\n</think>\n[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\nESTILO DEL MENSAJE AL PACIENTE:\n- Usá un lenguaje cálido y cercano ('vos').\n- Frases cortas, sin tecnicismos ni jerga clínica.\n- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n- Tono de guía que acompaña, no de autoridad.\n\nEjemplo de salida ideal:\n<think>\nEl paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n</think>\nEntiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!";
 
+const DEFAULT_ANALYSIS_PROMPT = "Sos un supervisor clínico experto en trasplante renal y salud conductual.\nTu tarea es analizar las transcripciones de sesiones simuladas entre un Psicólogo (IA) y un Paciente (IA).\nDebes evaluar la calidad de la intervención del psicólogo, la coherencia del paciente y el progreso general.\n\nEstructura tu análisis en los siguientes puntos:\n1. RESUMEN GENERAL: Breve descripción de los temas tratados.\n2. EVALUACIÓN DEL PSICÓLOGO: ¿Fue empático? ¿Usó estrategias claras? ¿Respetó el modelo COM-B?\n3. EVALUACIÓN DEL PACIENTE: ¿Fue realista? ¿Mantuvo la coherencia con su perfil?\n4. CONCLUSIONES Y RECOMENDACIONES: ¿Qué se podría mejorar en el prompt o configuración?";
+
+const DEFAULT_PATIENT_INSTRUCTIONS = `HABLÁS SIEMPRE en primera persona, como si realmente fueras este paciente.
+Respondés contando emociones, dificultades y sensaciones reales.
+Nunca digas que sos un modelo de lenguaje.
+
+Tu tarea es responder a tu médico sobre:
+- cómo te sentís,
+- qué te pasa con la medicación,
+- qué dificultades tenés para tomarla a horario.
+
+SOBRE LA DURACIÓN:
+- Sostené varias idas y vueltas.
+- Despedite solo si el médico cierra.
+
+SOBRE EL PASO DE LOS DÍAS:
+- Si la charla sigue otro día, actuá como si hubiera pasado un día entero.
+- Contá qué pasó con la medicación en ese lapso.`;
+
 function App() {
-    const [view, setView] = useState('setup'); // 'setup' or 'chat'
+    const [view, setView] = useState('setup'); // setup, chat, history
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false); // 'psychologist', 'patient', or false
+    const [loading, setLoading] = useState(false);
     const [suggestedReply, setSuggestedReply] = useState('');
     const [models, setModels] = useState([]);
     const [interactions, setInteractions] = useState([]);
     const [selectedInteraction, setSelectedInteraction] = useState(null);
+
+    const [analysisModel, setAnalysisModel] = useState('');
+    const [analysisPrompt, setAnalysisPrompt] = useState(DEFAULT_ANALYSIS_PROMPT);
+    const [selectedInteractionIds, setSelectedInteractionIds] = useState(new Set());
+    const [analysisResult, setAnalysisResult] = useState('');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+    const [documents, setDocuments] = useState([]);
+    const [selectedDocumentIds, setSelectedDocumentIds] = useState(new Set());
+    const [ragDocumentIds, setRagDocumentIds] = useState(new Set());
+
+    const messagesEndRef = useRef(null);
+
+    const [defaultPrompts, setDefaultPrompts] = useState({
+        psychologist_base: DEFAULT_PSYCHOLOGIST_PROMPT,
+        patient_instructions: DEFAULT_PATIENT_INSTRUCTIONS
+    });
+
+    // Collapsible states
+    const [showPsychologistPrompt, setShowPsychologistPrompt] = useState(false);
+    const [showPatientPrompt, setShowPatientPrompt] = useState(false);
 
     const [config, setConfig] = useState({
         chatbot_model: 'deepseek/deepseek-r1-0528-qwen3-8b',
@@ -23,48 +64,37 @@ function App() {
         psychologist_temperature: 0.7,
         psychologist_top_p: 0.9,
         psychologist_top_k: 40,
-        psychologist_max_tokens: 3000,
+        psychologist_max_tokens: 600,
         psychologist_presence_penalty: 0.1,
         psychologist_frequency_penalty: 0.2,
         // Patient params
         patient_temperature: 0.7,
         patient_top_p: 0.9,
         patient_top_k: 40,
-        patient_max_tokens: 3000,
+        patient_max_tokens: 600,
         patient_presence_penalty: 0.1,
-        patient_frequency_penalty: 0.2
+        patient_frequency_penalty: 0.2,
+        // RAG params
+        rag_chunk_size: 1000,
+        rag_overlap: 200
     });
-
-    const messagesEndRef = useRef(null);
-
-    useEffect(() => {
-        fetchModels();
-        fetchPatients();
-    }, []);
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
 
     const fetchModels = async () => {
         try {
             const res = await fetch('/api/models');
-            if (!res.ok) throw new Error('Failed to fetch models');
-            const data = await res.json();
-            if (data && Array.isArray(data.models)) {
+            if (res.ok) {
+                const data = await res.json();
                 setModels(data.models);
-            } else {
-                throw new Error('Invalid models format');
+                if (data.models.length > 0 && !config.chatbot_model) {
+                    setConfig(prev => ({ ...prev, chatbot_model: data.models[0] }));
+                }
             }
-        } catch (e) {
-            console.error("Failed to fetch models", e);
-            setModels(['deepseek/deepseek-r1-0528-qwen3-8b', 'mental_llama3.1-8b-mix-sft']);
+        } catch (error) {
+            console.error("Error fetching models:", error);
         }
     };
+
+
 
     const fetchInteractions = async () => {
         try {
@@ -76,6 +106,86 @@ function App() {
         } catch (error) {
             console.error("Error fetching interactions:", error);
         }
+    };
+
+    const fetchDocuments = async () => {
+        try {
+            const res = await fetch('/api/documents');
+            if (res.ok) {
+                const data = await res.json();
+                console.log('Fetched documents:', data);
+                console.log('Type of data:', typeof data);
+                console.log('Is array:', Array.isArray(data));
+                setDocuments(data);
+            }
+        } catch (error) {
+            console.error("Error fetching documents:", error);
+        }
+    };
+
+    const fetchDefaultPrompts = async () => {
+        try {
+            const res = await fetch('/api/prompts');
+            if (res.ok) {
+                const data = await res.json();
+                setDefaultPrompts(prev => ({
+                    psychologist_base: data.psychologist_base || DEFAULT_PSYCHOLOGIST_PROMPT,
+                    patient_instructions: data.patient_instructions || DEFAULT_PATIENT_INSTRUCTIONS
+                }));
+
+                // Update config if it hasn't been modified yet (simple check: if it equals hardcoded default)
+                // Actually, we should probably just update the base for future selections.
+                // If we want to update the CURRENT config, we need to be careful.
+                // For now, let's just load them so selectPatient uses them.
+            }
+        } catch (error) {
+            console.error("Error fetching default prompts:", error);
+        }
+    };
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        fetchModels();
+        fetchPatients();
+        fetchDocuments();
+        fetchDefaultPrompts();
+    }, []);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (view === 'history') {
+            fetchInteractions();
+            fetchDocuments();
+        }
+    }, [view]);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages, loading]);
+
+    const toggleDocumentSelection = (filename) => {
+        const newSelected = new Set(selectedDocumentIds);
+        if (newSelected.has(filename)) {
+            newSelected.delete(filename);
+        } else {
+            newSelected.add(filename);
+        }
+        setSelectedDocumentIds(newSelected);
+    };
+
+    const toggleRagDocumentSelection = (filename) => {
+        const newSelected = new Set(ragDocumentIds);
+        if (newSelected.has(filename)) {
+            newSelected.delete(filename);
+        } else {
+            newSelected.add(filename);
+        }
+        setRagDocumentIds(newSelected);
     };
 
     const handleViewInteraction = async (filename) => {
@@ -170,7 +280,8 @@ function App() {
                     top_k: parseInt(config.psychologist_top_k),
                     max_tokens: parseInt(config.psychologist_max_tokens),
                     presence_penalty: parseFloat(config.psychologist_presence_penalty),
-                    frequency_penalty: parseFloat(config.psychologist_frequency_penalty)
+                    frequency_penalty: parseFloat(config.psychologist_frequency_penalty),
+                    rag_documents: Array.from(ragDocumentIds)
                 })
             });
 
@@ -277,7 +388,99 @@ function App() {
         dificultades: '', notas_equipo: '', idiosincrasia: ''
     });
 
+    const handleFileUpload = async (files) => {
+        if (!files || files.length === 0) return;
+
+        const formData = new FormData();
+        Array.from(files).forEach(file => {
+            formData.append('files', file);
+        });
+
+        try {
+            const res = await fetch(`/api/upload_document?chunk_size=${config.rag_chunk_size}&overlap=${config.rag_overlap}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                fetchDocuments();
+                // Auto-select new documents
+                const newSelected = new Set(ragDocumentIds);
+                data.filenames.forEach(f => newSelected.add(f));
+                setRagDocumentIds(newSelected);
+            } else {
+                alert("Failed to upload documents");
+            }
+        } catch (error) {
+            console.error("Error uploading:", error);
+            alert("Error uploading documents");
+        }
+    };
+
+    const onDropDocuments = (e) => {
+        e.preventDefault();
+        handleFileUpload(e.dataTransfer.files);
+    };
+
+    const reindexDocuments = async () => {
+        if (!confirm("This will re-index all existing documents with the current Chunk Size and Overlap settings. Continue?")) return;
+
+        try {
+            const res = await fetch('/api/reindex_documents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chunk_size: parseInt(config.rag_chunk_size),
+                    overlap: parseInt(config.rag_overlap)
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                alert(data.message);
+                fetchDocuments();
+            } else {
+                throw new Error("Failed to re-index documents");
+            }
+        } catch (error) {
+            console.error("Error re-indexing:", error);
+            alert("Error re-indexing documents");
+        }
+    };
+
+    const deleteDocument = async (filename) => {
+        if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
+
+        try {
+            const res = await fetch(`/api/documents/${filename}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                fetchDocuments();
+                // Remove from selection if present
+                if (selectedDocumentIds.has(filename)) {
+                    const newSelected = new Set(selectedDocumentIds);
+                    newSelected.delete(filename);
+                    setSelectedDocumentIds(newSelected);
+                }
+                if (ragDocumentIds.has(filename)) {
+                    const newRagSelected = new Set(ragDocumentIds);
+                    newRagSelected.delete(filename);
+                    setRagDocumentIds(newRagSelected);
+                }
+            } else {
+                alert("Failed to delete document");
+            }
+        } catch (error) {
+            console.error("Error deleting document:", error);
+            alert("Error deleting document");
+        }
+    };
+
     const generatePatientPrompt = (p) => {
+        const instructions = defaultPrompts.patient_instructions || DEFAULT_PATIENT_INSTRUCTIONS;
         return `Sos el PACIENTE: ${p.nombre}, de ${p.edad} años.
 Tipo de trasplante: ${p.tipo_trasplante}.
 Medicación: ${p.medicacion}.
@@ -289,22 +492,9 @@ Fortalezas: ${p.fortalezas}
 Dificultades: ${p.dificultades}
 Idiosincrasia: ${p.idiosincrasia}
 
-HABLÁS SIEMPRE en primera persona, como si realmente fueras este paciente.
-Respondés contando emociones, dificultades y sensaciones reales.
-Nunca digas que sos un modelo de lenguaje.
+=== INSTRUCCIONES DE COMPORTAMIENTO ===
 
-Tu tarea es responder a tu médico sobre:
-- cómo te sentís,
-- qué te pasa con la medicación,
-- qué dificultades tenés para tomarla a horario.
-
-SOBRE LA DURACIÓN:
-- Sostené varias idas y vueltas.
-- Despedite solo si el médico cierra.
-
-SOBRE EL PASO DE LOS DÍAS:
-- Si la charla sigue otro día, actuá como si hubiera pasado un día entero.
-- Contá qué pasó con la medicación en ese lapso.`;
+${instructions}`;
     };
 
     const [generatingProfile, setGeneratingProfile] = useState(false);
@@ -403,7 +593,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
             ...config,
             patient_system_prompt: prompt,
             patient_name: patient.nombre,
-            psychologist_system_prompt: DEFAULT_PSYCHOLOGIST_PROMPT + "\n" + patientContext
+            psychologist_system_prompt: (defaultPrompts.psychologist_base || DEFAULT_PSYCHOLOGIST_PROMPT) + "\n" + patientContext
         });
     };
 
@@ -426,6 +616,47 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
             const updatedPatients = patients.filter(p => p.id !== id);
             setPatients(updatedPatients);
             await savePatientsToBackend(updatedPatients);
+        }
+    };
+
+    const handleSaveDefaultPrompt = async (type) => {
+        let newDefault = {};
+        if (type === 'psychologist') {
+            const current = config.psychologist_system_prompt;
+            const splitIndex = current.indexOf("INFORMACIÓN DEL PACIENTE ACTUAL");
+            let base = current;
+            if (splitIndex !== -1) {
+                base = current.substring(0, splitIndex).trim();
+            }
+            newDefault = { psychologist_base: base };
+            setDefaultPrompts(prev => ({ ...prev, psychologist_base: base }));
+        } else if (type === 'patient') {
+            const current = config.patient_system_prompt;
+            const marker = "=== INSTRUCCIONES DE COMPORTAMIENTO ===";
+            const splitIndex = current.indexOf(marker);
+            let instructions = current;
+            if (splitIndex !== -1) {
+                instructions = current.substring(splitIndex + marker.length).trim();
+            }
+            newDefault = { patient_instructions: instructions };
+            setDefaultPrompts(prev => ({ ...prev, patient_instructions: instructions }));
+        }
+
+        try {
+            const res = await fetch('/api/prompts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newDefault)
+            });
+            if (res.ok) {
+                setNotification("Default prompt saved successfully!");
+                setTimeout(() => setNotification(null), 3000);
+            } else {
+                alert("Failed to save default prompt.");
+            }
+        } catch (error) {
+            console.error("Error saving prompt:", error);
+            alert("Error saving default prompt.");
         }
     };
     if (view === 'setup') {
@@ -462,77 +693,189 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             </select>
                         </div>
                         <div className="form-group">
-                            <label>System Prompt</label>
-                            <textarea
-                                value={config.psychologist_system_prompt}
-                                onChange={e => setConfig({ ...config, psychologist_system_prompt: e.target.value })}
-                                rows={4}
-                            />
-                        </div>
+                            <label
+                                onClick={() => setShowPsychologistPrompt(!showPsychologistPrompt)}
+                                style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', userSelect: 'none' }}
+                            >
+                                {showPsychologistPrompt ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                System Prompt
+                            </label>
+                            {showPsychologistPrompt && (
+                                <>
+                                    <textarea
+                                        value={config.psychologist_system_prompt}
+                                        onChange={e => setConfig({ ...config, psychologist_system_prompt: e.target.value })}
+                                        rows={8}
+                                    />
+                                    <button
+                                        className="btn-secondary btn-xs"
+                                        style={{ marginTop: '0.5rem', width: '100%' }}
+                                        onClick={() => handleSaveDefaultPrompt('psychologist')}
+                                    >
+                                        Save as Default (Base Prompt)
+                                    </button>
+                                    <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Temperature <span>{config.psychologist_temperature}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="0" max="2" step="0.1"
+                                                value={config.psychologist_temperature}
+                                                onChange={e => setConfig({ ...config, psychologist_temperature: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Top P <span>{config.psychologist_top_p}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="0" max="1" step="0.05"
+                                                value={config.psychologist_top_p}
+                                                onChange={e => setConfig({ ...config, psychologist_top_p: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Presence Penalty <span>{config.psychologist_presence_penalty}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="-2" max="2" step="0.1"
+                                                value={config.psychologist_presence_penalty}
+                                                onChange={e => setConfig({ ...config, psychologist_presence_penalty: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Frequency Penalty <span>{config.psychologist_frequency_penalty}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="-2" max="2" step="0.1"
+                                                value={config.psychologist_frequency_penalty}
+                                                onChange={e => setConfig({ ...config, psychologist_frequency_penalty: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Top K</label>
+                                            <input
+                                                type="number"
+                                                value={config.psychologist_top_k}
+                                                onChange={e => setConfig({ ...config, psychologist_top_k: e.target.value })}
+                                                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Max Tokens</label>
+                                            <input
+                                                type="number"
+                                                value={config.psychologist_max_tokens}
+                                                onChange={e => setConfig({ ...config, psychologist_max_tokens: e.target.value })}
+                                                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div style={{ marginTop: '1.5rem', borderTop: '1px solid #444', paddingTop: '1rem' }}>
+                                        <h4 style={{ marginBottom: '1rem', color: '#eee' }}>Knowledge Base (RAG)</h4>
+                                        <div className="rag-upload-area"
+                                            onDrop={onDropDocuments}
+                                            onDragOver={e => e.preventDefault()}
+                                            style={{ border: '2px dashed #444', padding: '1rem', borderRadius: '8px', textAlign: 'center', marginBottom: '1rem' }}
+                                        >
+                                            <Upload size={24} style={{ marginBottom: '0.5rem', color: '#888' }} />
+                                            <p style={{ margin: 0, color: '#aaa' }}>Drag & drop PDF/TXT files here</p>
+                                            <input
+                                                type="file"
+                                                multiple
+                                                onChange={e => handleFileUpload(e.target.files)}
+                                                style={{ display: 'none' }}
+                                                id="file-upload"
+                                            />
+                                            <label htmlFor="file-upload" className="btn-secondary btn-sm" style={{ marginTop: '0.5rem', display: 'inline-block' }}>
+                                                Browse Files
+                                            </label>
+                                        </div>
 
-                        <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-                            <div className="form-group">
-                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    Temperature <span>{config.psychologist_temperature}</span>
-                                </label>
-                                <input
-                                    type="range" min="0" max="2" step="0.1"
-                                    value={config.psychologist_temperature}
-                                    onChange={e => setConfig({ ...config, psychologist_temperature: e.target.value })}
-                                    style={{ width: '100%' }}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    Top P <span>{config.psychologist_top_p}</span>
-                                </label>
-                                <input
-                                    type="range" min="0" max="1" step="0.05"
-                                    value={config.psychologist_top_p}
-                                    onChange={e => setConfig({ ...config, psychologist_top_p: e.target.value })}
-                                    style={{ width: '100%' }}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    Presence Penalty <span>{config.psychologist_presence_penalty}</span>
-                                </label>
-                                <input
-                                    type="range" min="-2" max="2" step="0.1"
-                                    value={config.psychologist_presence_penalty}
-                                    onChange={e => setConfig({ ...config, psychologist_presence_penalty: e.target.value })}
-                                    style={{ width: '100%' }}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    Frequency Penalty <span>{config.psychologist_frequency_penalty}</span>
-                                </label>
-                                <input
-                                    type="range" min="-2" max="2" step="0.1"
-                                    value={config.psychologist_frequency_penalty}
-                                    onChange={e => setConfig({ ...config, psychologist_frequency_penalty: e.target.value })}
-                                    style={{ width: '100%' }}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Top K</label>
-                                <input
-                                    type="number"
-                                    value={config.psychologist_top_k}
-                                    onChange={e => setConfig({ ...config, psychologist_top_k: e.target.value })}
-                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Max Tokens</label>
-                                <input
-                                    type="number"
-                                    value={config.psychologist_max_tokens}
-                                    onChange={e => setConfig({ ...config, psychologist_max_tokens: e.target.value })}
-                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
-                                />
-                            </div>
+                                        <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                            <div className="form-group">
+                                                <label>Chunk Size</label>
+                                                <input
+                                                    type="number"
+                                                    value={config.rag_chunk_size}
+                                                    onChange={e => setConfig({ ...config, rag_chunk_size: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Overlap</label>
+                                                <input
+                                                    type="number"
+                                                    value={config.rag_overlap}
+                                                    onChange={e => setConfig({ ...config, rag_overlap: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <button className="btn-secondary btn-sm" onClick={reindexDocuments} style={{ width: '100%', marginBottom: '1rem' }}>
+                                            <BrainCircuit size={16} /> Re-index All Documents
+                                        </button>
+
+                                        <div className="documents-list">
+                                            {documents.map(doc => (
+                                                <div
+                                                    key={doc}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '0.75rem',
+                                                        background: '#2a2a2a',
+                                                        marginBottom: '0.5rem',
+                                                        borderRadius: '4px',
+                                                        gap: '0.75rem'
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={ragDocumentIds.has(doc)}
+                                                        onChange={() => toggleRagDocumentSelection(doc)}
+                                                        style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                                                    />
+                                                    <FileText size={16} color="#aaa" />
+                                                    <span style={{
+                                                        flex: 1,
+                                                        color: '#ffffff',
+                                                        fontSize: '0.9rem',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        whiteSpace: 'nowrap'
+                                                    }}>
+                                                        {doc}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => deleteDocument(doc)}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: '#ff4444',
+                                                            cursor: 'pointer',
+                                                            padding: '4px',
+                                                            display: 'flex',
+                                                            alignItems: 'center'
+                                                        }}
+                                                    >
+                                                        <Trash size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {documents.length === 0 && <p style={{ color: '#666', fontStyle: 'italic', fontSize: '0.9rem' }}>No documents uploaded.</p>}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -547,216 +890,321 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                                 {models.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
                         </div>
-
-                        {/* Patient Profiles Section */}
-                        <div className="patient-profiles">
-                            <div className="profiles-header">
-                                <h4>Patient Profiles</h4>
-                                <button
-                                    className="btn-secondary btn-sm"
-                                    onClick={openAddPatientModal}
-                                >
-                                    + Add Patient
-                                </button>
-                            </div>
-
-                            <table className="patients-table">
-                                <thead>
-                                    <tr>
-                                        <th>Nombre</th>
-                                        <th>Edad</th>
-                                        <th>Medicación</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {patients.map(p => (
-                                        <tr key={p.id}>
-                                            <td>{p.nombre}</td>
-                                            <td>{p.edad}</td>
-                                            <td>{p.medicacion}</td>
-                                            <td className="actions-cell">
-                                                <div className="actions-wrapper">
-                                                    <button className="btn-secondary btn-xs" onClick={() => selectPatient(p)} title="Use this profile">Use</button>
-                                                    <button className="btn-secondary btn-xs" onClick={() => handleEditPatient(p)} title="Edit">Edit</button>
-                                                    <button className="btn-danger btn-xs" onClick={() => handleDeletePatient(p.id)} title="Delete">Del</button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Modal for Adding Patient */}
-                        {showPatientForm && (
-                            <div className="modal-overlay">
-                                <div className="modal-content">
-                                    <div className="modal-header">
-                                        <h3>{newPatient.id ? 'Edit Patient' : 'Add New Patient'}</h3>
-                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                            <button
-                                                type="button"
-                                                className="btn-primary btn-sm"
-                                                onClick={generateRandomProfile}
-                                                disabled={generatingProfile}
-                                            >
-                                                {generatingProfile ? <Loader2 className="spinner" size={16} /> : <Bot size={16} />}
-                                                {generatingProfile ? ' Generating...' : ' Auto-fill with AI'}
-                                            </button>
-                                            <button className="btn-close" onClick={() => setShowPatientForm(false)}>×</button>
+                        <div className="form-group">
+                            <label
+                                onClick={() => setShowPatientPrompt(!showPatientPrompt)}
+                                style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', userSelect: 'none' }}
+                            >
+                                {showPatientPrompt ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                System Prompt (Auto-filled from profile or custom)
+                            </label>
+                            {showPatientPrompt && (
+                                <>
+                                    <textarea
+                                        value={config.patient_system_prompt}
+                                        onChange={e => setConfig({ ...config, patient_system_prompt: e.target.value })}
+                                        rows={8}
+                                    />
+                                    <button
+                                        className="btn-secondary btn-xs"
+                                        style={{ marginTop: '0.5rem', width: '100%' }}
+                                        onClick={() => handleSaveDefaultPrompt('patient')}
+                                    >
+                                        Save as Default Template (Instructions Only)
+                                    </button>
+                                    <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Temperature <span>{config.patient_temperature}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="0" max="2" step="0.1"
+                                                value={config.patient_temperature}
+                                                onChange={e => setConfig({ ...config, patient_temperature: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Top P <span>{config.patient_top_p}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="0" max="1" step="0.05"
+                                                value={config.patient_top_p}
+                                                onChange={e => setConfig({ ...config, patient_top_p: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Presence Penalty <span>{config.patient_presence_penalty}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="-2" max="2" step="0.1"
+                                                value={config.patient_presence_penalty}
+                                                onChange={e => setConfig({ ...config, patient_presence_penalty: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                Frequency Penalty <span>{config.patient_frequency_penalty}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="-2" max="2" step="0.1"
+                                                value={config.patient_frequency_penalty}
+                                                onChange={e => setConfig({ ...config, patient_frequency_penalty: e.target.value })}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Top K</label>
+                                            <input
+                                                type="number"
+                                                value={config.patient_top_k}
+                                                onChange={e => setConfig({ ...config, patient_top_k: e.target.value })}
+                                                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Max Tokens</label>
+                                            <input
+                                                type="number"
+                                                value={config.patient_max_tokens}
+                                                onChange={e => setConfig({ ...config, patient_max_tokens: e.target.value })}
+                                                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                                            />
                                         </div>
                                     </div>
-                                    <form className="patient-form" onSubmit={handleSavePatient}>
-                                        <div className="form-grid">
-                                            <div className="form-field">
-                                                <label>Nombre</label>
-                                                <input value={newPatient.nombre} onChange={e => setNewPatient({ ...newPatient, nombre: e.target.value })} required />
-                                            </div>
-                                            <div className="form-field">
-                                                <label>Edad</label>
-                                                <input value={newPatient.edad} onChange={e => setNewPatient({ ...newPatient, edad: e.target.value })} required />
-                                            </div>
-                                            <div className="form-field">
-                                                <label>Tipo Trasplante</label>
-                                                <input value={newPatient.tipo_trasplante} onChange={e => setNewPatient({ ...newPatient, tipo_trasplante: e.target.value })} />
-                                            </div>
-                                            <div className="form-field">
-                                                <label>Medicación</label>
-                                                <input value={newPatient.medicacion} onChange={e => setNewPatient({ ...newPatient, medicacion: e.target.value })} />
-                                            </div>
-                                            <div className="form-field full-width">
-                                                <label>Adherencia Previa</label>
-                                                <input value={newPatient.adherencia_previa} onChange={e => setNewPatient({ ...newPatient, adherencia_previa: e.target.value })} />
-                                            </div>
-                                            <div className="form-field full-width">
-                                                <label>Contexto</label>
-                                                <textarea rows={3} value={newPatient.contexto} onChange={e => setNewPatient({ ...newPatient, contexto: e.target.value })} />
-                                            </div>
-                                            <div className="form-field">
-                                                <label>Nivel Educativo</label>
-                                                <input value={newPatient.nivel_educativo} onChange={e => setNewPatient({ ...newPatient, nivel_educativo: e.target.value })} />
-                                            </div>
-                                            <div className="form-field">
-                                                <label>Estilo Comunicación</label>
-                                                <input value={newPatient.estilo_comunicacion} onChange={e => setNewPatient({ ...newPatient, estilo_comunicacion: e.target.value })} />
-                                            </div>
-                                            <div className="form-field full-width">
-                                                <label>Fortalezas</label>
-                                                <textarea rows={3} value={newPatient.fortalezas} onChange={e => setNewPatient({ ...newPatient, fortalezas: e.target.value })} />
-                                            </div>
-                                            <div className="form-field full-width">
-                                                <label>Dificultades</label>
-                                                <textarea rows={3} value={newPatient.dificultades} onChange={e => setNewPatient({ ...newPatient, dificultades: e.target.value })} />
-                                            </div>
-                                            <div className="form-field full-width">
-                                                <label>Notas Equipo</label>
-                                                <textarea rows={3} value={newPatient.notas_equipo} onChange={e => setNewPatient({ ...newPatient, notas_equipo: e.target.value })} />
-                                            </div>
-                                            <div className="form-field full-width">
-                                                <label>Idiosincrasia</label>
-                                                <textarea rows={3} value={newPatient.idiosincrasia} onChange={e => setNewPatient({ ...newPatient, idiosincrasia: e.target.value })} />
-                                            </div>
-                                        </div>
-                                        <div className="modal-actions">
-                                            <button type="button" className="btn-secondary btn-sm" onClick={() => setShowPatientForm(false)}>
-                                                <X size={16} /> Cancel
-                                            </button>
-                                            <button type="submit" className="btn-primary btn-sm">
-                                                <Save size={16} /> Save Profile
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="form-group">
-                            <label>System Prompt (Auto-filled from profile or custom)</label>
-                            <textarea
-                                value={config.patient_system_prompt}
-                                onChange={e => setConfig({ ...config, patient_system_prompt: e.target.value })}
-                                rows={8}
-                            />
-                            <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-                                <div className="form-group">
-                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        Temperature <span>{config.patient_temperature}</span>
-                                    </label>
-                                    <input
-                                        type="range" min="0" max="2" step="0.1"
-                                        value={config.patient_temperature}
-                                        onChange={e => setConfig({ ...config, patient_temperature: e.target.value })}
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        Top P <span>{config.patient_top_p}</span>
-                                    </label>
-                                    <input
-                                        type="range" min="0" max="1" step="0.05"
-                                        value={config.patient_top_p}
-                                        onChange={e => setConfig({ ...config, patient_top_p: e.target.value })}
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        Presence Penalty <span>{config.patient_presence_penalty}</span>
-                                    </label>
-                                    <input
-                                        type="range" min="-2" max="2" step="0.1"
-                                        value={config.patient_presence_penalty}
-                                        onChange={e => setConfig({ ...config, patient_presence_penalty: e.target.value })}
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        Frequency Penalty <span>{config.patient_frequency_penalty}</span>
-                                    </label>
-                                    <input
-                                        type="range" min="-2" max="2" step="0.1"
-                                        value={config.patient_frequency_penalty}
-                                        onChange={e => setConfig({ ...config, patient_frequency_penalty: e.target.value })}
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>Top K</label>
-                                    <input
-                                        type="number"
-                                        value={config.patient_top_k}
-                                        onChange={e => setConfig({ ...config, patient_top_k: e.target.value })}
-                                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>Max Tokens</label>
-                                    <input
-                                        type="number"
-                                        value={config.patient_max_tokens}
-                                        onChange={e => setConfig({ ...config, patient_max_tokens: e.target.value })}
-                                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
-                                    />
-                                </div>
-                            </div>
+                                </>
+                            )}
                         </div>
                     </div>
 
 
 
+                    {/* Patient Profiles Section */}
+                    <div className="patient-profiles">
+                        <div className="profiles-header">
+                            <h4>Patient Profiles</h4>
+                            <button
+                                className="btn-secondary btn-sm"
+                                onClick={openAddPatientModal}
+                            >
+                                + Add Patient
+                            </button>
+                        </div>
+
+                        <table className="patients-table">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Edad</th>
+                                    <th>Medicación</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {patients.map(p => (
+                                    <tr key={p.id}>
+                                        <td>{p.nombre}</td>
+                                        <td>{p.edad}</td>
+                                        <td>{p.medicacion}</td>
+                                        <td className="actions-cell">
+                                            <div className="actions-wrapper">
+                                                <button className="btn-secondary btn-xs" onClick={() => selectPatient(p)} title="Use this profile">Use</button>
+                                                <button className="btn-secondary btn-xs" onClick={() => handleEditPatient(p)} title="Edit">Edit</button>
+                                                <button className="btn-danger btn-xs" onClick={() => handleDeletePatient(p.id)} title="Delete">Del</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
                     <button className="btn-primary start-btn" onClick={startSession}>
                         <Play size={20} /> Start Session
                     </button>
-                </div>
+                </div >
 
-            </div>
+                {
+                    showPatientForm && (
+                        <div className="modal-overlay">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h3>{newPatient.id ? 'Edit Patient' : 'Add New Patient'}</h3>
+                                    <button className="btn-close" onClick={() => setShowPatientForm(false)}>
+                                        <X size={24} />
+                                    </button>
+                                </div>
+                                <form onSubmit={handleSavePatient} className="patient-form">
+                                    <div className="form-grid">
+                                        <div className="form-group">
+                                            <label>Nombre</label>
+                                            <input required value={newPatient.nombre} onChange={e => setNewPatient({ ...newPatient, nombre: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Edad</label>
+                                            <input required value={newPatient.edad} onChange={e => setNewPatient({ ...newPatient, edad: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Tipo de Trasplante</label>
+                                            <input required value={newPatient.tipo_trasplante} onChange={e => setNewPatient({ ...newPatient, tipo_trasplante: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Medicación</label>
+                                            <textarea required value={newPatient.medicacion} onChange={e => setNewPatient({ ...newPatient, medicacion: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Adherencia Previa</label>
+                                            <textarea required value={newPatient.adherencia_previa} onChange={e => setNewPatient({ ...newPatient, adherencia_previa: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Contexto</label>
+                                            <textarea required value={newPatient.contexto} onChange={e => setNewPatient({ ...newPatient, contexto: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Nivel Educativo</label>
+                                            <input required value={newPatient.nivel_educativo} onChange={e => setNewPatient({ ...newPatient, nivel_educativo: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Estilo Comunicación</label>
+                                            <textarea required value={newPatient.estilo_comunicacion} onChange={e => setNewPatient({ ...newPatient, estilo_comunicacion: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Fortalezas</label>
+                                            <textarea required value={newPatient.fortalezas} onChange={e => setNewPatient({ ...newPatient, fortalezas: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Dificultades</label>
+                                            <textarea required value={newPatient.dificultades} onChange={e => setNewPatient({ ...newPatient, dificultades: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Notas Equipo</label>
+                                            <textarea value={newPatient.notas_equipo} onChange={e => setNewPatient({ ...newPatient, notas_equipo: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Idiosincrasia</label>
+                                            <textarea value={newPatient.idiosincrasia} onChange={e => setNewPatient({ ...newPatient, idiosincrasia: e.target.value })} />
+                                        </div>
+                                    </div>
+                                    <div className="modal-actions">
+                                        <button type="button" className="btn-secondary" onClick={generateRandomProfile} disabled={generatingProfile}>
+                                            {generatingProfile ? <Loader2 className="spinner" size={16} /> : <BrainCircuit size={16} />}
+                                            Generate with AI
+                                        </button>
+                                        <div style={{ flex: 1 }}></div>
+                                        <button type="button" className="btn-secondary" onClick={() => setShowPatientForm(false)}>Cancel</button>
+                                        <button type="submit" className="btn-primary">Save Patient</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )
+                }
+
+            </div >
         );
     }
 
 
+
+    const toggleInteractionSelection = (filename) => {
+        const newSelected = new Set(selectedInteractionIds);
+        if (newSelected.has(filename)) {
+            newSelected.delete(filename);
+        } else {
+            newSelected.add(filename);
+        }
+        setSelectedInteractionIds(newSelected);
+    };
+
+    const handleAnalyze = async () => {
+        if (selectedInteractionIds.size === 0) {
+            alert("Please select at least one interaction to analyze.");
+            return;
+        }
+        if (!analysisModel) {
+            alert("Please select a model for analysis.");
+            return;
+        }
+
+        setIsAnalyzing(true);
+        setAnalysisResult('');
+
+        try {
+            const res = await fetch('/api/analyze_interactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filenames: Array.from(selectedInteractionIds),
+                    model: analysisModel,
+                    prompt: analysisPrompt,
+                    document_filenames: Array.from(selectedDocumentIds)
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setAnalysisResult(data.analysis);
+                setShowAnalysisModal(true);
+            } else {
+                throw new Error("Failed to analyze interactions");
+            }
+        } catch (error) {
+            console.error("Error analyzing:", error);
+            setAnalysisResult("Error occurred during analysis.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    const deleteInteraction = async (filename) => {
+        if (!confirm("Are you sure you want to delete this interaction?")) return;
+
+        try {
+            const res = await fetch(`/api/interactions/${filename}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                // Remove from list
+                setInteractions(prev => prev.filter(i => i.filename !== filename));
+                // Remove from selection if present
+                if (selectedInteractionIds.has(filename)) {
+                    const newSelected = new Set(selectedInteractionIds);
+                    newSelected.delete(filename);
+                    setSelectedInteractionIds(newSelected);
+                }
+            } else {
+                alert("Failed to delete interaction");
+            }
+        } catch (error) {
+            console.error("Error deleting:", error);
+            alert("Error deleting interaction");
+        }
+    };
+
+    const generatePDF = () => {
+        const doc = new jsPDF('p', 'pt', 'a4');
+        const element = document.getElementById('analysis-content');
+        if (!element) return;
+
+        // Add title with model info manually to PDF or ensure it's in the HTML
+        // We will rely on the HTML content being styled for PDF
+
+        doc.html(element, {
+            callback: function (doc) {
+                doc.save(`analysis_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+            },
+            x: 40,
+            y: 40,
+            width: 515, // A4 width (595) - margins (80)
+            windowWidth: 800,
+            autoPaging: 'text'
+        });
+    };
 
     if (view === 'history') {
         return (
@@ -770,31 +1218,129 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         <ArrowLeft size={16} /> Back to Setup
                     </button>
                 </header>
-                <div className="history-list" style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
-                    {interactions.length === 0 ? (
-                        <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No saved interactions found.</p>
-                    ) : (
-                        <div style={{ display: 'grid', gap: '1rem' }}>
-                            {interactions.map((interaction, idx) => (
-                                <div key={idx} style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
-                                            <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>{interaction.patient_name}</h3>
-                                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                                                {new Date(interaction.timestamp).toLocaleString()}
-                                            </span>
-                                        </div>
-                                        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                            Models: <span style={{ color: 'var(--accent)' }}>{interaction.chatbot_model}</span> vs <span style={{ color: 'var(--accent)' }}>{interaction.patient_model}</span>
-                                        </div>
-                                    </div>
-                                    <button className="btn-secondary btn-sm" onClick={() => handleViewInteraction(interaction.filename)}>
-                                        <Eye size={16} /> View Chat
+
+                <div className="history-controls" style={{ padding: '1rem 2rem', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                        <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                            <label style={{ marginBottom: '0.25rem' }}>Analysis Model</label>
+                            <select
+                                value={analysisModel}
+                                onChange={e => setAnalysisModel(e.target.value)}
+                                style={{ padding: '0.5rem' }}
+                            >
+                                <option value="">Select a model for analysis...</option>
+                                {models.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                        </div>
+                        <button
+                            className="btn-primary"
+                            onClick={handleAnalyze}
+                            disabled={isAnalyzing || selectedInteractionIds.size === 0}
+                        >
+                            {isAnalyzing ? <Loader2 className="spinner" size={16} /> : <BrainCircuit size={16} />}
+                            {isAnalyzing ? ' Analyzing...' : ' Analyze Selected'}
+                        </button>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ marginBottom: '0.25rem' }}>Analysis System Prompt</label>
+                        <textarea
+                            value={analysisPrompt}
+                            onChange={e => setAnalysisPrompt(e.target.value)}
+                            style={{ width: '100%', minHeight: '100px', padding: '0.5rem', fontSize: '0.9rem', fontFamily: 'monospace' }}
+                            placeholder="Enter custom analysis prompt..."
+                        />
+                    </div>
+
+                    {/* Document Drop Zone */}
+                    <div
+                        className="drop-zone"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={onDropDocuments}
+                        style={{
+                            border: '2px dashed var(--border-color)',
+                            borderRadius: '0.75rem',
+                            padding: '1.5rem',
+                            textAlign: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            background: 'rgba(255,255,255,0.02)'
+                        }}
+                    >
+                        <Upload size={24} style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)' }} />
+                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Drag & Drop documents here to include in analysis</p>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', opacity: 0.7 }}>(PDF, TXT, JSON supported)</p>
+                    </div>
+
+                    {/* Document List */}
+                    {documents.length > 0 && (
+                        <div className="document-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto' }}>
+                            {documents.map(doc => (
+                                <div key={doc.filename} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    background: 'var(--bg-tertiary)',
+                                    padding: '0.4rem 0.8rem',
+                                    borderRadius: '4px',
+                                    border: selectedDocumentIds.has(doc.filename) ? '1px solid var(--accent)' : '1px solid transparent'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedDocumentIds.has(doc.filename)}
+                                        onChange={() => toggleDocumentSelection(doc.filename)}
+                                    />
+                                    <FileText size={14} />
+                                    <span style={{ fontSize: '0.9rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.filename}</span>
+                                    <button
+                                        onClick={() => deleteDocument(doc.filename)}
+                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex' }}
+                                    >
+                                        <X size={14} />
                                     </button>
                                 </div>
                             ))}
                         </div>
                     )}
+                </div>
+
+                <div className="history-content" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
+                    <div className="history-list" style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+                        {interactions.length === 0 ? (
+                            <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No saved interactions found.</p>
+                        ) : (
+                            <div style={{ display: 'grid', gap: '1rem' }}>
+                                {interactions.map((interaction, idx) => (
+                                    <div key={idx} className="history-item">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedInteractionIds.has(interaction.filename)}
+                                            onChange={() => toggleInteractionSelection(interaction.filename)}
+                                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                        />
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                                                <h3>{interaction.patient_name}</h3>
+                                                <span className="date-badge">
+                                                    {new Date(interaction.timestamp).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="meta-info">
+                                                Models: <span style={{ color: 'var(--accent)' }}>{interaction.chatbot_model}</span> vs <span style={{ color: 'var(--accent)' }}>{interaction.patient_model}</span>
+                                            </div>
+                                        </div>
+                                        <button className="btn-secondary btn-sm" onClick={() => handleViewInteraction(interaction.filename)}>
+                                            <Eye size={16} /> View
+                                        </button>
+                                        <button className="btn-secondary btn-sm" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => deleteInteraction(interaction.filename)}>
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+
                 </div>
 
                 {selectedInteraction && (
@@ -806,7 +1352,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             </div>
                             <div className="chat-area" style={{ flex: 1, overflowY: 'auto', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '0.5rem' }}>
                                 {selectedInteraction.messages.map((msg, idx) => (
-                                    <div key={idx} className={`message-row ${msg.role}`}>
+                                    <div key={idx} className={`message - row ${msg.role} `}>
                                         <div className="avatar">
                                             {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
                                         </div>
@@ -826,6 +1372,34 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             <div className="modal-actions" style={{ marginTop: '1rem', borderTop: 'none' }}>
                                 <button className="btn-secondary btn-sm" onClick={() => setSelectedInteraction(null)}>
                                     Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showAnalysisModal && (
+                    <div className="modal-overlay">
+                        <div className="modal-content" style={{ width: '90%', maxWidth: '800px', height: '90vh', display: 'flex', flexDirection: 'column' }}>
+                            <div className="modal-header">
+                                <h2>Analysis Result</h2>
+                                <button className="btn-close" onClick={() => setShowAnalysisModal(false)}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
+                                <div id="analysis-content" style={{ background: 'white', color: 'black', padding: '2rem', borderRadius: '8px' }}>
+                                    <h1 style={{ fontSize: '24px', marginBottom: '0.5rem', borderBottom: '1px solid #ccc', paddingBottom: '0.5rem' }}>Clinical Analysis Report</h1>
+                                    <p style={{ fontSize: '14px', color: '#666', marginBottom: '1.5rem' }}>Generated by model: <strong>{analysisModel}</strong> on {new Date().toLocaleDateString()}</p>
+                                    <div className="markdown-body">
+                                        <ReactMarkdown>{analysisResult}</ReactMarkdown>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="modal-footer" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                                <button className="btn-secondary" onClick={() => setShowAnalysisModal(false)}>Close</button>
+                                <button className="btn-primary" onClick={generatePDF}>
+                                    <Download size={16} /> Download PDF
                                 </button>
                             </div>
                         </div>
@@ -858,7 +1432,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         </span>
                     )}
                 </div>
-                <button className="btn-icon" onClick={() => setView('setup')}>
+                <button className="btn-icon" onClick={endSession}>
                     <X size={24} />
                 </button>
             </header>
@@ -872,7 +1446,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                     </div>
                 ) : (
                     messages.map((msg, idx) => (
-                        <div key={idx} className={`message-row ${msg.role}`}>
+                        <div key={idx} className={`message - row ${msg.role} `}>
                             <div className="avatar">
                                 {msg.role === 'user' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
