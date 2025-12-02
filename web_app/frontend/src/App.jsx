@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight } from 'lucide-react';
+import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 
@@ -40,6 +40,9 @@ function App() {
     const [analysisResult, setAnalysisResult] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+    const [analysisChatMessages, setAnalysisChatMessages] = useState([]);
+    const [showAnalysisChat, setShowAnalysisChat] = useState(false);
+    const [isAnalysisChatLoading, setIsAnalysisChatLoading] = useState(false);
     const [documents, setDocuments] = useState([]);
     const [selectedDocumentIds, setSelectedDocumentIds] = useState(new Set());
     const [ragDocumentIds, setRagDocumentIds] = useState(new Set());
@@ -54,6 +57,8 @@ function App() {
     // Collapsible states
     const [showPsychologistPrompt, setShowPsychologistPrompt] = useState(false);
     const [showPatientPrompt, setShowPatientPrompt] = useState(false);
+    const [showAnalysisPrompt, setShowAnalysisPrompt] = useState(false);
+    const [showRagConfig, setShowRagConfig] = useState(false);
 
     const [config, setConfig] = useState({
         chatbot_model: 'deepseek/deepseek-r1-0528-qwen3-8b',
@@ -120,6 +125,31 @@ function App() {
             }
         } catch (error) {
             console.error("Error fetching documents:", error);
+        }
+    };
+
+    const handleReindex = async () => {
+        if (!confirm("This will clear the database and re-index all documents with the current settings. Continue?")) return;
+
+        try {
+            const res = await fetch('/api/reindex_documents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chunk_size: parseInt(config.rag_chunk_size),
+                    overlap: parseInt(config.rag_overlap)
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                alert(data.message);
+            } else {
+                alert("Failed to re-index documents.");
+            }
+        } catch (error) {
+            console.error("Error re-indexing:", error);
+            alert("Error re-indexing documents.");
         }
     };
 
@@ -1120,6 +1150,55 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
         setSelectedInteractionIds(newSelected);
     };
 
+    const handleStartAnalysisChat = () => {
+        if (selectedInteractionIds.size === 0) {
+            alert("Please select at least one interaction to analyze.");
+            return;
+        }
+        if (!analysisModel) {
+            alert("Please select a model for analysis.");
+            return;
+        }
+        setAnalysisChatMessages([]);
+        setShowAnalysisChat(true);
+    };
+
+    const handleSendAnalysisMessage = async (message) => {
+        if (!message.trim()) return;
+
+        const newMessages = [...analysisChatMessages, { role: 'user', content: message }];
+        setAnalysisChatMessages(newMessages);
+        setIsAnalysisChatLoading(true);
+
+        try {
+            const res = await fetch('/api/analysis_chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: message,
+                    history: analysisChatMessages,
+                    interaction_filenames: Array.from(selectedInteractionIds),
+                    document_filenames: Array.from(selectedDocumentIds),
+                    model: analysisModel,
+                    system_prompt: analysisPrompt || "You are an expert clinical supervisor analyzing therapy sessions."
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setAnalysisChatMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+            } else {
+                console.error("Failed to send analysis message");
+                setAnalysisChatMessages(prev => [...prev, { role: 'assistant', content: "Error: Failed to get response." }]);
+            }
+        } catch (error) {
+            console.error("Error in analysis chat:", error);
+            setAnalysisChatMessages(prev => [...prev, { role: 'assistant', content: "Error: Network error." }]);
+        } finally {
+            setIsAnalysisChatLoading(false);
+        }
+    };
+
     const handleAnalyze = async () => {
         if (selectedInteractionIds.size === 0) {
             alert("Please select at least one interaction to analyze.");
@@ -1240,71 +1319,152 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             {isAnalyzing ? <Loader2 className="spinner" size={16} /> : <BrainCircuit size={16} />}
                             {isAnalyzing ? ' Analyzing...' : ' Analyze Selected'}
                         </button>
+                        <button
+                            className="btn-secondary"
+                            onClick={handleStartAnalysisChat}
+                            disabled={selectedInteractionIds.size === 0}
+                            style={{ marginLeft: '0.5rem' }}
+                        >
+                            <MessageSquare size={16} /> Chat with History
+                        </button>
                     </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label style={{ marginBottom: '0.25rem' }}>Analysis System Prompt</label>
-                        <textarea
-                            value={analysisPrompt}
-                            onChange={e => setAnalysisPrompt(e.target.value)}
-                            style={{ width: '100%', minHeight: '100px', padding: '0.5rem', fontSize: '0.9rem', fontFamily: 'monospace' }}
-                            placeholder="Enter custom analysis prompt..."
-                        />
-                    </div>
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                        <label
+                            onClick={() => setShowAnalysisPrompt(!showAnalysisPrompt)}
+                            style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', userSelect: 'none', marginBottom: '0.25rem' }}
+                        >
+                            {showAnalysisPrompt ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            Analysis System Prompt
+                        </label>
+                        {showAnalysisPrompt && (
+                            <>
+                                <textarea
+                                    value={analysisPrompt}
+                                    onChange={e => setAnalysisPrompt(e.target.value)}
+                                    style={{ width: '100%', minHeight: '100px', padding: '0.5rem', fontSize: '0.9rem', fontFamily: 'monospace', marginBottom: '1rem' }}
+                                    placeholder="Enter custom analysis prompt..."
+                                />
 
-                    {/* Document Drop Zone */}
-                    <div
-                        className="drop-zone"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={onDropDocuments}
-                        style={{
-                            border: '2px dashed var(--border-color)',
-                            borderRadius: '0.75rem',
-                            padding: '1.5rem',
-                            textAlign: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            background: 'rgba(255,255,255,0.02)'
-                        }}
-                    >
-                        <Upload size={24} style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)' }} />
-                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Drag & Drop documents here to include in analysis</p>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', opacity: 0.7 }}>(PDF, TXT, JSON supported)</p>
-                    </div>
-
-                    {/* Document List */}
-                    {documents.length > 0 && (
-                        <div className="document-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto' }}>
-                            {documents.map(doc => (
-                                <div key={doc.filename} style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.5rem',
-                                    background: 'var(--bg-tertiary)',
-                                    padding: '0.4rem 0.8rem',
-                                    borderRadius: '4px',
-                                    border: selectedDocumentIds.has(doc.filename) ? '1px solid var(--accent)' : '1px solid transparent'
-                                }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedDocumentIds.has(doc.filename)}
-                                        onChange={() => toggleDocumentSelection(doc.filename)}
-                                    />
-                                    <FileText size={14} />
-                                    <span style={{ fontSize: '0.9rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.filename}</span>
-                                    <button
-                                        onClick={() => deleteDocument(doc.filename)}
-                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex' }}
+                                {/* RAG Configuration */}
+                                <div className="rag-config" style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }}>
+                                    <h4
+                                        onClick={() => setShowRagConfig(!showRagConfig)}
+                                        style={{ marginTop: 0, marginBottom: showRagConfig ? '0.5rem' : 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                                     >
-                                        <X size={14} />
-                                    </button>
+                                        {showRagConfig ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                        RAG Configuration
+                                    </h4>
+                                    {showRagConfig && (
+                                        <>
+                                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Chunk Size</label>
+                                                    <input
+                                                        type="number"
+                                                        value={config.rag_chunk_size}
+                                                        onChange={e => setConfig({ ...config, rag_chunk_size: parseInt(e.target.value) })}
+                                                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                                                    />
+                                                </div>
+                                                <div style={{ flex: 1 }}>
+                                                    <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Overlap</label>
+                                                    <input
+                                                        type="number"
+                                                        value={config.rag_overlap}
+                                                        onChange={e => setConfig({ ...config, rag_overlap: parseInt(e.target.value) })}
+                                                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <button
+                                                className="btn-secondary"
+                                                onClick={handleReindex}
+                                                style={{ width: '100%', justifyContent: 'center', marginBottom: '1rem' }}
+                                            >
+                                                <BrainCircuit size={16} /> Re-index All Documents
+                                            </button>
+
+                                            {/* Document Drop Zone */}
+                                            <div
+                                                className="drop-zone"
+                                                onDragOver={(e) => e.preventDefault()}
+                                                onDrop={onDropDocuments}
+                                                style={{
+                                                    border: '2px dashed var(--border-color)',
+                                                    borderRadius: '0.75rem',
+                                                    padding: '1.5rem',
+                                                    textAlign: 'center',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s',
+                                                    background: 'rgba(255,255,255,0.02)',
+                                                    marginBottom: '1rem'
+                                                }}
+                                            >
+                                                <Upload size={24} style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)' }} />
+                                                <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Drag & Drop documents here to include in analysis</p>
+                                                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', opacity: 0.7 }}>(PDF, TXT, JSON supported)</p>
+                                            </div>
+
+                                            {/* Document List */}
+                                            {documents.length > 0 && (
+                                                <div className="document-list" style={{ marginTop: '1rem', maxHeight: '300px', overflowY: 'auto' }}>
+                                                    {documents.map(doc => (
+                                                        <div key={doc} style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '0.75rem',
+                                                            background: '#2a2a2a',
+                                                            marginBottom: '0.5rem',
+                                                            borderRadius: '4px',
+                                                            gap: '0.75rem',
+                                                            border: selectedDocumentIds.has(doc) ? '1px solid var(--accent)' : '1px solid transparent'
+                                                        }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedDocumentIds.has(doc)}
+                                                                onChange={() => toggleDocumentSelection(doc)}
+                                                                style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                                                            />
+                                                            <FileText size={16} color="#aaa" />
+                                                            <span style={{
+                                                                flex: 1,
+                                                                color: '#ffffff',
+                                                                fontSize: '0.9rem',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap'
+                                                            }}>
+                                                                {doc}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => deleteDocument(doc)}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: '#ff4444',
+                                                                    cursor: 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center'
+                                                                }}
+                                                            >
+                                                                <Trash size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
-                            ))}
-                        </div>
-                    )}
+                            </>
+                        )}
+                    </div>
                 </div>
 
-                <div className="history-content" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
-                    <div className="history-list" style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+                <div className="history-content" style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div className="history-list" style={{ padding: '2rem' }}>
                         {interactions.length === 0 ? (
                             <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No saved interactions found.</p>
                         ) : (
@@ -1352,7 +1512,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             </div>
                             <div className="chat-area" style={{ flex: 1, overflowY: 'auto', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '0.5rem' }}>
                                 {selectedInteraction.messages.map((msg, idx) => (
-                                    <div key={idx} className={`message - row ${msg.role} `}>
+                                    <div key={idx} className={`message-row ${msg.role}`}>
                                         <div className="avatar">
                                             {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
                                         </div>
@@ -1405,6 +1565,72 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         </div>
                     </div>
                 )}
+
+                {showAnalysisChat && (
+                    <div className="modal-overlay">
+                        <div className="modal-content" style={{ width: '90%', maxWidth: '1000px', height: '90vh', display: 'flex', flexDirection: 'column' }}>
+                            <div className="modal-header">
+                                <h3>Analysis Chat ({analysisModel})</h3>
+                                <button className="btn-close" onClick={() => setShowAnalysisChat(false)}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <div className="chat-area" style={{ flex: 1, overflowY: 'auto', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '0.5rem' }}>
+                                {analysisChatMessages.length === 0 ? (
+                                    <div className="welcome-screen" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.5 }}>
+                                        <MessageSquare size={48} />
+                                        <p>Ask questions about the selected interactions...</p>
+                                    </div>
+                                ) : (
+                                    analysisChatMessages.map((msg, idx) => (
+                                        <div key={idx} className={`message-row ${msg.role}`}>
+                                            <div className="avatar">
+                                                {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
+                                            </div>
+                                            <div className="message-content">
+                                                <div className="text">
+                                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                                {isAnalysisChatLoading && (
+                                    <div className="message-row assistant">
+                                        <div className="avatar"><Bot size={20} /></div>
+                                        <div className="message-content">
+                                            <div className="typing-indicator">
+                                                <Loader2 className="spinner" size={16} /> Thinking...
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="input-area" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                                <form
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const input = e.target.elements.messageInput;
+                                        handleSendAnalysisMessage(input.value);
+                                        input.value = '';
+                                    }}
+                                    style={{ display: 'flex', gap: '1rem' }}
+                                >
+                                    <input
+                                        name="messageInput"
+                                        type="text"
+                                        placeholder="Type your question..."
+                                        style={{ flex: 1, padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                                        autoComplete="off"
+                                    />
+                                    <button type="submit" className="btn-primary" disabled={isAnalysisChatLoading}>
+                                        <Send size={20} />
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -1446,7 +1672,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                     </div>
                 ) : (
                     messages.map((msg, idx) => (
-                        <div key={idx} className={`message - row ${msg.role} `}>
+                        <div key={idx} className={`message-row ${msg.role}`}>
                             <div className="avatar">
                                 {msg.role === 'user' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

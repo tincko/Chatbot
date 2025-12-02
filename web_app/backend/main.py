@@ -277,6 +277,14 @@ class AnalyzeRequest(BaseModel):
     prompt: str
     document_filenames: Optional[List[str]] = []
 
+class AnalysisChatRequest(BaseModel):
+    message: str
+    history: List[Dict[str, str]]
+    interaction_filenames: List[str]
+    document_filenames: List[str]
+    model: str
+    system_prompt: str
+
 DOCUMENTS_DIR = os.path.join(BASE_DIR, "documentos")
 if not os.path.exists(DOCUMENTS_DIR):
     os.makedirs(DOCUMENTS_DIR)
@@ -409,6 +417,53 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
 
     except Exception as e:
         print(f"Error analyzing interactions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analysis_chat")
+def analysis_chat_endpoint(req: AnalysisChatRequest):
+    try:
+        # 1. Get Interactions Content
+        interactions_text = ""
+        for filename in req.interaction_filenames:
+            filepath = os.path.join(DIALOGOS_DIR, filename)
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # Format conversation (simplified)
+                    timestamp = data.get('timestamp', 'Unknown')
+                    patient = data.get('config', {}).get('patient_name', 'Unknown')
+                    interactions_text += f"\n--- Interaction: {filename} ({timestamp}, Patient: {patient}) ---\n"
+                    for msg in data.get('messages', []):
+                        interactions_text += f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}\n"
+        
+        # 2. Get RAG Content
+        rag_text = ""
+        if req.document_filenames:
+            # We query the RAG system with the user's message
+            # But we filter by the selected documents
+            docs = rag_manager.query(req.message, n_results=5, filter_filenames=req.document_filenames)
+            if docs:
+                rag_text = "\n".join(docs)
+            else:
+                rag_text = "No relevant document chunks found for this query."
+        
+        # 3. Combine Context
+        full_context = ""
+        if interactions_text:
+            full_context += f"--- SELECTED INTERACTIONS ---\n{interactions_text}\n"
+        if rag_text:
+            full_context += f"\n--- RELEVANT DOCUMENT CHUNKS (RAG) ---\n{rag_text}\n"
+            
+        if not full_context:
+            full_context = "No context selected."
+            
+        # 4. Call Orchestrator
+        response = orchestrator.chat_analysis(req.model, req.history + [{"role": "user", "content": req.message}], req.system_prompt, full_context)
+        
+        return {"response": response}
+        
+    except Exception as e:
+        print(f"Error in analysis chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

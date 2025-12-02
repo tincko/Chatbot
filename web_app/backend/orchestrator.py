@@ -390,3 +390,29 @@ class DualLLMOrchestrator:
             temperature=0.7,
             max_tokens=2000
         ))
+
+    def chat_analysis(self, model, history, system_prompt, context):
+        """
+        Chat with the analysis model, including context from interactions and RAG.
+        """
+        # Prepare messages
+        # Check if placeholder exists
+        if "{{CONTEXT}}" in system_prompt:
+            full_system_prompt = system_prompt.replace("{{CONTEXT}}", f"\n=== CONTEXT FOR ANALYSIS ===\n{context}")
+        else:
+            # We inject the context into the system prompt at the end
+            full_system_prompt = f"{system_prompt}\n\n=== CONTEXT FOR ANALYSIS ===\n{context}"
+        
+        messages = [{"role": "system", "content": full_system_prompt}]
+        
+        # Append history
+        for msg in history:
+            messages.append({"role": msg['role'], "content": msg['content']})
+            
+        print(f"--- Chat Analysis with {model} ---")
+        return self._clean_think_tags(self._call_llm(
+            model,
+            messages,
+            temperature=0.7,
+            max_tokens=2000
+        ))

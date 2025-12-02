@@ -657,3 +657,7 @@ h1 {
   border-radius: 4px;
   color: var(--text-secondary);
 }
+.history-view {
+  overflow-y: auto;
+}
+
