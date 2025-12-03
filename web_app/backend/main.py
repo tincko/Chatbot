@@ -220,6 +220,14 @@ def get_interactions():
                     config = data.get('config', {})
                     timestamp = data.get('timestamp', '')
                     
+                    # Fix for old timestamp format (YYYY-MM-DD_HH-MM-SS) to ISO
+                    try:
+                        if "_" in timestamp and "T" not in timestamp:
+                            dt = datetime.strptime(timestamp, "%Y-%m-%d_%H-%M-%S")
+                            timestamp = dt.isoformat()
+                    except Exception:
+                        pass
+                    
                     # Try to extract patient name
                     patient_name = "Desconocido"
                     patient_prompt = config.get('patient_system_prompt', '')
@@ -387,13 +395,15 @@ def generate_interaction(req: GenerateInteractionRequest):
         )
         
         # Save interaction
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        now = datetime.now()
+        timestamp_iso = now.isoformat()
+        timestamp_safe = now.strftime("%Y-%m-%d_%H-%M-%S")
         patient_name = req.patient_profile.get('nombre', 'Unknown').replace(" ", "_")
-        filename = f"auto_{patient_name}_{timestamp}.json"
+        filename = f"auto_{patient_name}_{timestamp_safe}.json"
         filepath = os.path.join(DIALOGOS_DIR, filename)
         
         data = {
-            "timestamp": timestamp,
+            "timestamp": timestamp_iso,
             "config": {
                 "chatbot_model": req.chatbot_model,
                 "patient_model": req.patient_model,
@@ -419,6 +429,8 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
     try:
         # 1. Load content of all selected files
         interactions_content = []
+        patient_models = set()
+        patient_prompts = set()
         for filename in req.filenames:
             filepath = os.path.join(DIALOGOS_DIR, filename)
             if os.path.exists(filepath):
@@ -428,6 +440,11 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
                     # Extract relevant info for analysis
                     timestamp = data.get('timestamp', 'Unknown Date')
                     config = data.get('config', {})
+                    
+                    if 'patient_model' in config:
+                        patient_models.add(config['patient_model'])
+                    if 'patient_system_prompt' in config:
+                        patient_prompts.add(config['patient_system_prompt'])
                     messages = data.get('messages', [])
                     
                     # Extract patient name from config (similar logic to get_interactions)
@@ -449,6 +466,15 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
         
         if not interactions_content and not req.document_filenames: # Modified condition
             return {"analysis": "No valid interactions or documents found to analyze."}
+            
+
+
+
+
+
+
+
+
             
         full_context = "\n\n".join(interactions_content)
 
@@ -480,7 +506,13 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
             presence_penalty=req.presence_penalty,
             frequency_penalty=req.frequency_penalty
         )
-        return {"analysis": analysis}
+        return {
+            "analysis": analysis,
+            "metadata": {
+                "patient_models": list(patient_models),
+                "patient_prompts": list(patient_prompts)
+            }
+        }
 
     except Exception as e:
         print(f"Error analyzing interactions: {e}")

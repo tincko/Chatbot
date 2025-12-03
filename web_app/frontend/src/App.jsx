@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\nTu tarea en cada turno es:\n1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\nINSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\nFORMATO DE SALIDA:\n<think>\n[Aquí tu análisis interno del modelo COM-B y estrategia]\n</think>\n[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\nESTILO DEL MENSAJE AL PACIENTE:\n- Usá un lenguaje cálido y cercano ('vos').\n- Frases cortas, sin tecnicismos ni jerga clínica.\n- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n- Tono de guía que acompaña, no de autoridad.\n\nEjemplo de salida ideal:\n<think>\nEl paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n</think>\nEntiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!";
 
@@ -35,12 +36,14 @@ function App() {
     const [models, setModels] = useState([]);
     const [interactions, setInteractions] = useState([]);
     const [selectedInteraction, setSelectedInteraction] = useState(null);
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
     const [analysisModel, setAnalysisModel] = useState('');
     const [analysisPrompt, setAnalysisPrompt] = useState(DEFAULT_ANALYSIS_PROMPT);
     const [historyChatPrompt, setHistoryChatPrompt] = useState(DEFAULT_HISTORY_CHAT_PROMPT);
     const [selectedInteractionIds, setSelectedInteractionIds] = useState(new Set());
     const [analysisResult, setAnalysisResult] = useState('');
+    const [analysisMetadata, setAnalysisMetadata] = useState(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [generatingPatientId, setGeneratingPatientId] = useState(null); // Changed from boolean to ID
     const [showAnalysisModal, setShowAnalysisModal] = useState(false);
@@ -778,7 +781,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                 <header className="header">
                     <div className="logo">
                         <BrainCircuit className="icon-logo" />
-                        <h1>DualMind <span className="subtitle">Setup</span></h1>
+                        <h1>NefroNudge <span className="subtitle">Setup</span></h1>
                     </div>
                     <button className="btn-secondary btn-sm" onClick={() => { setView('history'); fetchInteractions(); }}>
                         <History size={16} /> History
@@ -1386,6 +1389,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
             if (res.ok) {
                 const data = await res.json();
                 setAnalysisResult(data.analysis);
+                setAnalysisMetadata(data.metadata);
                 setShowAnalysisModal(true);
             } else {
                 throw new Error("Failed to analyze interactions");
@@ -1424,24 +1428,15 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
         }
     };
 
-    const generatePDF = () => {
-        const doc = new jsPDF('p', 'pt', 'a4');
+    const generatePDF = async () => {
         const element = document.getElementById('analysis-content');
-        if (!element) return;
+        if (!element) {
+            console.error("Analysis content element not found!");
+            alert("Error: Could not find content to generate PDF.");
+            return;
+        }
 
-        // Add title with model info manually to PDF or ensure it's in the HTML
-        // We will rely on the HTML content being styled for PDF
-
-        doc.html(element, {
-            callback: function (doc) {
-                doc.save(`analysis_report_${new Date().toISOString().slice(0, 10)}.pdf`);
-            },
-            x: 40,
-            y: 40,
-            width: 515, // A4 width (595) - margins (80)
-            windowWidth: 800,
-            autoPaging: 'text'
-        });
+        setIsGeneratingPDF(true);
     };
 
     if (view === 'history') {
@@ -1450,7 +1445,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                 <header className="header">
                     <div className="logo">
                         <BrainCircuit className="icon-logo" />
-                        <h1>DualMind <span className="subtitle">History</span></h1>
+                        <h1>NefroNudge <span className="subtitle">History</span></h1>
                     </div>
                     <button className="btn-secondary btn-sm" onClick={() => setView('setup')}>
                         <ArrowLeft size={16} /> Back to Setup
@@ -1844,6 +1839,40 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                                 <div id="analysis-content" style={{ background: 'white', color: 'black', padding: '2rem', borderRadius: '8px' }}>
                                     <h1 style={{ fontSize: '24px', marginBottom: '0.5rem', borderBottom: '1px solid #ccc', paddingBottom: '0.5rem' }}>Clinical Analysis Report</h1>
                                     <p style={{ fontSize: '14px', color: '#666', marginBottom: '1.5rem' }}>Generated by model: <strong>{analysisModel}</strong> on {new Date().toLocaleDateString()}</p>
+
+                                    {analysisMetadata && (
+                                        <div style={{ marginBottom: '2rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                            <h2 style={{ fontSize: '18px', marginBottom: '1rem', color: '#2d3748' }}>Información</h2>
+
+                                            <div style={{ marginBottom: '1rem' }}>
+                                                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '0.5rem' }}>Patient Model(s) Used:</h3>
+                                                <ul style={{ listStyle: 'disc', paddingLeft: '1.5rem', margin: 0 }}>
+                                                    {analysisMetadata.patient_models.map((model, idx) => (
+                                                        <li key={idx} style={{ fontSize: '14px', color: '#2d3748' }}>{model}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+
+                                            <div>
+                                                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '0.5rem' }}>Patient Profile(s) / System Prompt(s):</h3>
+                                                {analysisMetadata.patient_prompts.map((prompt, idx) => (
+                                                    <div key={idx} style={{
+                                                        fontSize: '13px',
+                                                        color: '#4a5568',
+                                                        background: '#fff',
+                                                        padding: '0.75rem',
+                                                        borderRadius: '4px',
+                                                        border: '1px solid #cbd5e0',
+                                                        marginBottom: '0.5rem',
+                                                        whiteSpace: 'pre-wrap'
+                                                    }}>
+                                                        {prompt}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="markdown-body">
                                         <ReactMarkdown>{analysisResult}</ReactMarkdown>
                                     </div>
@@ -1851,8 +1880,8 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             </div>
                             <div className="modal-footer" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                                 <button className="btn-secondary" onClick={() => setShowAnalysisModal(false)}>Close</button>
-                                <button className="btn-primary" onClick={generatePDF}>
-                                    <Download size={16} /> Download PDF
+                                <button className="btn-primary" onClick={generatePDF} disabled={isGeneratingPDF}>
+                                    {isGeneratingPDF ? <><Loader2 className="spinner" size={16} /> Generating PDF...</> : <><Download size={16} /> Download PDF</>}
                                 </button>
                             </div>
                         </div>
@@ -1968,7 +1997,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
             <header className="header">
                 <div className="logo">
                     <BrainCircuit className="icon-logo" />
-                    <h1>DualMind <span className="subtitle">Therapy Session</span></h1>
+                    <h1>NefroNudge <span className="subtitle">Therapy Session</span></h1>
                     {config.patient_name && (
                         <span style={{
                             marginLeft: '1rem',
