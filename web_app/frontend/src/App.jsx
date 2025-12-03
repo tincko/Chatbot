@@ -7,6 +7,8 @@ const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud con
 
 const DEFAULT_ANALYSIS_PROMPT = "Sos un supervisor clínico experto en trasplante renal y salud conductual.\nTu tarea es analizar las transcripciones de sesiones simuladas entre un Psicólogo (IA) y un Paciente (IA).\nDebes evaluar la calidad de la intervención del psicólogo, la coherencia del paciente y el progreso general.\n\nEstructura tu análisis en los siguientes puntos:\n1. RESUMEN GENERAL: Breve descripción de los temas tratados.\n2. EVALUACIÓN DEL PSICÓLOGO: ¿Fue empático? ¿Usó estrategias claras? ¿Respetó el modelo COM-B?\n3. EVALUACIÓN DEL PACIENTE: ¿Fue realista? ¿Mantuvo la coherencia con su perfil?\n4. CONCLUSIONES Y RECOMENDACIONES: ¿Qué se podría mejorar en el prompt o configuración?";
 
+const DEFAULT_HISTORY_CHAT_PROMPT = "Sos un asistente experto que tiene acceso al historial de conversaciones de terapia simulada.\nTu objetivo es responder preguntas del usuario sobre estas conversaciones, buscando patrones, detalles específicos o resumiendo información.\nUsa el contexto proporcionado para fundamentar tus respuestas.";
+
 const DEFAULT_PATIENT_INSTRUCTIONS = `HABLÁS SIEMPRE en primera persona, como si realmente fueras este paciente.
 Respondés contando emociones, dificultades y sensaciones reales.
 Nunca digas que sos un modelo de lenguaje.
@@ -36,16 +38,24 @@ function App() {
 
     const [analysisModel, setAnalysisModel] = useState('');
     const [analysisPrompt, setAnalysisPrompt] = useState(DEFAULT_ANALYSIS_PROMPT);
+    const [historyChatPrompt, setHistoryChatPrompt] = useState(DEFAULT_HISTORY_CHAT_PROMPT);
     const [selectedInteractionIds, setSelectedInteractionIds] = useState(new Set());
     const [analysisResult, setAnalysisResult] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [generatingPatientId, setGeneratingPatientId] = useState(null); // Changed from boolean to ID
     const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+    const [pendingAutoChatPatient, setPendingAutoChatPatient] = useState(null); // State for confirmation modal
     const [analysisChatMessages, setAnalysisChatMessages] = useState([]);
     const [showAnalysisChat, setShowAnalysisChat] = useState(false);
     const [isAnalysisChatLoading, setIsAnalysisChatLoading] = useState(false);
     const [documents, setDocuments] = useState([]);
     const [selectedDocumentIds, setSelectedDocumentIds] = useState(new Set());
     const [ragDocumentIds, setRagDocumentIds] = useState(new Set());
+
+    // Filter states
+    const [filterPatientModel, setFilterPatientModel] = useState('');
+    const [filterChatbotModel, setFilterChatbotModel] = useState('');
+    const [filterPatientName, setFilterPatientName] = useState('');
 
     const messagesEndRef = useRef(null);
 
@@ -81,12 +91,26 @@ function App() {
         patient_frequency_penalty: 0.2,
         // RAG params
         rag_chunk_size: 1000,
-        rag_overlap: 200
+        rag_overlap: 200,
+        // Analysis params
+        analysis_temperature: 0.7,
+        analysis_top_p: 0.9,
+        analysis_top_k: 40,
+        analysis_max_tokens: 2000,
+        analysis_presence_penalty: 0.1,
+        analysis_frequency_penalty: 0.2,
+        // History Chat params
+        history_chat_temperature: 0.7,
+        history_chat_top_p: 0.9,
+        history_chat_top_k: 40,
+        history_chat_max_tokens: 2000,
+        history_chat_presence_penalty: 0.1,
+        history_chat_frequency_penalty: 0.2
     });
 
     const fetchModels = async () => {
         try {
-            const res = await fetch('/api/models');
+            const res = await fetch('http://localhost:8000/api/models');
             if (res.ok) {
                 const data = await res.json();
                 setModels(data.models);
@@ -103,7 +127,7 @@ function App() {
 
     const fetchInteractions = async () => {
         try {
-            const res = await fetch('/api/interactions');
+            const res = await fetch('http://localhost:8000/api/interactions');
             if (res.ok) {
                 const data = await res.json();
                 setInteractions(data);
@@ -115,7 +139,7 @@ function App() {
 
     const fetchDocuments = async () => {
         try {
-            const res = await fetch('/api/documents');
+            const res = await fetch('http://localhost:8000/api/documents');
             if (res.ok) {
                 const data = await res.json();
                 console.log('Fetched documents:', data);
@@ -132,7 +156,7 @@ function App() {
         if (!confirm("This will clear the database and re-index all documents with the current settings. Continue?")) return;
 
         try {
-            const res = await fetch('/api/reindex_documents', {
+            const res = await fetch('http://localhost:8000/api/reindex_documents', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -155,13 +179,15 @@ function App() {
 
     const fetchDefaultPrompts = async () => {
         try {
-            const res = await fetch('/api/prompts');
+            const res = await fetch('http://localhost:8000/api/prompts');
             if (res.ok) {
                 const data = await res.json();
                 setDefaultPrompts(prev => ({
                     psychologist_base: data.psychologist_base || DEFAULT_PSYCHOLOGIST_PROMPT,
                     patient_instructions: data.patient_instructions || DEFAULT_PATIENT_INSTRUCTIONS
                 }));
+                if (data.analysis_prompt) setAnalysisPrompt(data.analysis_prompt);
+                if (data.history_chat_prompt) setHistoryChatPrompt(data.history_chat_prompt);
 
                 // Update config if it hasn't been modified yet (simple check: if it equals hardcoded default)
                 // Actually, we should probably just update the base for future selections.
@@ -220,7 +246,7 @@ function App() {
 
     const handleViewInteraction = async (filename) => {
         try {
-            const res = await fetch(`/api/interactions/${filename}`);
+            const res = await fetch(`http://localhost:8000/api/interactions/${filename}`);
             if (res.ok) {
                 const data = await res.json();
                 setSelectedInteraction(data);
@@ -258,7 +284,7 @@ function App() {
         };
 
         try {
-            const res = await fetch('/api/save_interaction', {
+            const res = await fetch('http://localhost:8000/api/save_interaction', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(interactionData)
@@ -295,7 +321,7 @@ function App() {
             const history = messages.map(m => ({ role: m.role, content: m.content }));
 
             // Step 1: Get Psychologist Response
-            const res = await fetch('/api/chat', {
+            const res = await fetch('http://localhost:8000/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -324,7 +350,7 @@ function App() {
             // Step 2: Get Patient Suggestion
             setLoading('patient');
 
-            const suggestRes = await fetch('/api/suggest', {
+            const suggestRes = await fetch('http://localhost:8000/api/suggest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -364,7 +390,7 @@ function App() {
             // Since the /api/suggest endpoint expects a psychologist_response, we can pass an empty string
             // or a generic greeting to trigger the patient's opening.
 
-            const suggestRes = await fetch('/api/suggest', {
+            const suggestRes = await fetch('http://localhost:8000/api/suggest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -427,7 +453,7 @@ function App() {
         });
 
         try {
-            const res = await fetch(`/api/upload_document?chunk_size=${config.rag_chunk_size}&overlap=${config.rag_overlap}`, {
+            const res = await fetch(`http://localhost:8000/api/upload_document?chunk_size=${config.rag_chunk_size}&overlap=${config.rag_overlap}`, {
                 method: 'POST',
                 body: formData
             });
@@ -457,7 +483,7 @@ function App() {
         if (!confirm("This will re-index all existing documents with the current Chunk Size and Overlap settings. Continue?")) return;
 
         try {
-            const res = await fetch('/api/reindex_documents', {
+            const res = await fetch('http://localhost:8000/api/reindex_documents', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -483,7 +509,7 @@ function App() {
         if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
 
         try {
-            const res = await fetch(`/api/documents/${filename}`, {
+            const res = await fetch(`http://localhost:8000/api/documents/${filename}`, {
                 method: 'DELETE'
             });
 
@@ -532,7 +558,7 @@ ${instructions}`;
     const generateRandomProfile = async () => {
         setGeneratingProfile(true);
         try {
-            const res = await fetch('/api/generate_profile', {
+            const res = await fetch('http://localhost:8000/api/generate_profile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model: config.patient_model })
@@ -550,7 +576,7 @@ ${instructions}`;
 
     const fetchPatients = async () => {
         try {
-            const res = await fetch('/api/patients');
+            const res = await fetch('http://localhost:8000/api/patients');
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
@@ -564,7 +590,7 @@ ${instructions}`;
 
     const savePatientsToBackend = async (updatedPatients) => {
         try {
-            const res = await fetch('/api/patients', {
+            const res = await fetch('http://localhost:8000/api/patients', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedPatients)
@@ -627,6 +653,10 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
         });
     };
 
+    useEffect(() => {
+        console.log("STATE CHANGE: pendingAutoChatPatient is now:", pendingAutoChatPatient);
+    }, [pendingAutoChatPatient]);
+
     const handleEditPatient = (patient) => {
         setNewPatient(patient);
         setShowPatientForm(true);
@@ -639,6 +669,55 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
             dificultades: '', notas_equipo: '', idiosincrasia: ''
         });
         setShowPatientForm(true);
+    };
+
+    const handleGenerateInteraction = async (patient) => {
+        console.log("handleGenerateInteraction called for:", patient.nombre);
+        if (!config.chatbot_model || !config.patient_model) {
+            console.log("Missing models:", config);
+            alert("Please select both Psychologist and Patient models in the configuration first.");
+            return;
+        }
+        setPendingAutoChatPatient(patient);
+    };
+
+    const startAutoChat = async (patient) => {
+        console.log("Starting auto chat for:", patient.nombre);
+        setGeneratingPatientId(patient.id);
+        try {
+            // Generate prompt for this patient
+            const patientSystemPrompt = generatePatientPrompt(patient);
+
+            const res = await fetch('http://localhost:8000/api/generate_interaction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    patient_profile: patient,
+                    patient_system_prompt: patientSystemPrompt,
+                    psychologist_system_prompt: config.psychologist_system_prompt,
+                    chatbot_model: config.chatbot_model,
+                    patient_model: config.patient_model,
+                    turns: 5, // Reduced turns to avoid timeouts
+                    psychologist_temperature: parseFloat(config.psychologist_temperature),
+                    patient_temperature: parseFloat(config.patient_temperature)
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setNotification(`Interaction generated successfully! Saved as ${data.filename}`);
+                setTimeout(() => setNotification(null), 10000);
+                // Refresh interactions list if we are in history view, or just fetch them now
+                fetchInteractions();
+            } else {
+                throw new Error("Failed to generate interaction");
+            }
+        } catch (error) {
+            console.error("Error generating interaction:", error);
+            alert("Error generating interaction. Check console for details.");
+        } finally {
+            setGeneratingPatientId(null);
+        }
     };
 
     const handleDeletePatient = async (id) => {
@@ -670,10 +749,14 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
             }
             newDefault = { patient_instructions: instructions };
             setDefaultPrompts(prev => ({ ...prev, patient_instructions: instructions }));
+        } else if (type === 'analysis') {
+            newDefault = { analysis_prompt: analysisPrompt };
+        } else if (type === 'history_chat') {
+            newDefault = { history_chat_prompt: historyChatPrompt };
         }
 
         try {
-            const res = await fetch('/api/prompts', {
+            const res = await fetch('http://localhost:8000/api/prompts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newDefault)
@@ -701,6 +784,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         <History size={16} /> History
                     </button>
                 </header>
+
 
                 {notification && (
                     <div className="notification success">
@@ -1042,9 +1126,38 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                                         <td>{p.medicacion}</td>
                                         <td className="actions-cell">
                                             <div className="actions-wrapper">
-                                                <button className="btn-secondary btn-xs" onClick={() => selectPatient(p)} title="Use this profile">Use</button>
-                                                <button className="btn-secondary btn-xs" onClick={() => handleEditPatient(p)} title="Edit">Edit</button>
-                                                <button className="btn-danger btn-xs" onClick={() => handleDeletePatient(p.id)} title="Delete">Del</button>
+                                                <button
+                                                    className="btn-secondary btn-xs"
+                                                    onClick={() => selectPatient(p)}
+                                                    title="Use this profile"
+                                                    disabled={generatingPatientId !== null}
+                                                >
+                                                    Use
+                                                </button>
+                                                <button
+                                                    className="btn-secondary btn-xs"
+                                                    onClick={() => handleEditPatient(p)}
+                                                    title="Edit"
+                                                    disabled={generatingPatientId !== null}
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button
+                                                    className="btn-primary btn-xs"
+                                                    onClick={() => { console.log("Clicked Auto Chat for", p.nombre); handleGenerateInteraction(p); }}
+                                                    title="Auto Chat"
+                                                    style={{ backgroundColor: '#4caf50', borderColor: '#4caf50', opacity: (generatingPatientId !== null && generatingPatientId !== p.id) ? 0.5 : 1 }}
+                                                >
+                                                    {generatingPatientId === p.id ? <Loader2 size={12} className="spinner" /> : <Bot size={12} />}
+                                                </button>
+                                                <button
+                                                    className="btn-danger btn-xs"
+                                                    onClick={() => handleDeletePatient(p.id)}
+                                                    title="Delete"
+                                                    disabled={generatingPatientId !== null}
+                                                >
+                                                    Del
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1134,6 +1247,40 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                     )
                 }
 
+                {/* Auto Chat Modal */}
+                {pendingAutoChatPatient && (
+                    <div className="modal-overlay">
+                        <div className="modal-content" style={{ maxWidth: '400px' }}>
+                            <div className="modal-header">
+                                <h3>Start Auto Chat</h3>
+                                <button className="btn-close" onClick={() => setPendingAutoChatPatient(null)}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <div style={{ padding: '1.5rem 0', color: '#ccc' }}>
+                                Start autonomous chat generation for {pendingAutoChatPatient.nombre}? This may take a while.
+                            </div>
+                            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setPendingAutoChatPatient(null)}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    onClick={() => {
+                                        console.log("Modal Accept clicked");
+                                        startAutoChat(pendingAutoChatPatient);
+                                        setPendingAutoChatPatient(null);
+                                    }}
+                                >
+                                    Accept
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div >
         );
     }
@@ -1171,7 +1318,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
         setIsAnalysisChatLoading(true);
 
         try {
-            const res = await fetch('/api/analysis_chat', {
+            const res = await fetch('http://localhost:8000/api/analysis_chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1180,7 +1327,13 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                     interaction_filenames: Array.from(selectedInteractionIds),
                     document_filenames: Array.from(selectedDocumentIds),
                     model: analysisModel,
-                    system_prompt: analysisPrompt || "You are an expert clinical supervisor analyzing therapy sessions."
+                    system_prompt: historyChatPrompt || DEFAULT_HISTORY_CHAT_PROMPT,
+                    temperature: parseFloat(config.history_chat_temperature),
+                    top_p: parseFloat(config.history_chat_top_p),
+                    top_k: parseInt(config.history_chat_top_k),
+                    max_tokens: parseInt(config.history_chat_max_tokens),
+                    presence_penalty: parseFloat(config.history_chat_presence_penalty),
+                    frequency_penalty: parseFloat(config.history_chat_frequency_penalty)
                 })
             });
 
@@ -1213,14 +1366,20 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
         setAnalysisResult('');
 
         try {
-            const res = await fetch('/api/analyze_interactions', {
+            const res = await fetch('http://localhost:8000/api/analyze_interactions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     filenames: Array.from(selectedInteractionIds),
                     model: analysisModel,
                     prompt: analysisPrompt,
-                    document_filenames: Array.from(selectedDocumentIds)
+                    document_filenames: Array.from(selectedDocumentIds),
+                    temperature: parseFloat(config.analysis_temperature),
+                    top_p: parseFloat(config.analysis_top_p),
+                    top_k: parseInt(config.analysis_top_k),
+                    max_tokens: parseInt(config.analysis_max_tokens),
+                    presence_penalty: parseFloat(config.analysis_presence_penalty),
+                    frequency_penalty: parseFloat(config.analysis_frequency_penalty)
                 })
             });
 
@@ -1243,7 +1402,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
         if (!confirm("Are you sure you want to delete this interaction?")) return;
 
         try {
-            const res = await fetch(`/api/interactions/${filename}`, {
+            const res = await fetch(`http://localhost:8000/api/interactions/${filename}`, {
                 method: 'DELETE'
             });
 
@@ -1334,16 +1493,73 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', userSelect: 'none', marginBottom: '0.25rem' }}
                         >
                             {showAnalysisPrompt ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            Analysis System Prompt
+                            System Prompts & RAG Config
                         </label>
                         {showAnalysisPrompt && (
                             <>
-                                <textarea
-                                    value={analysisPrompt}
-                                    onChange={e => setAnalysisPrompt(e.target.value)}
-                                    style={{ width: '100%', minHeight: '100px', padding: '0.5rem', fontSize: '0.9rem', fontFamily: 'monospace', marginBottom: '1rem' }}
-                                    placeholder="Enter custom analysis prompt..."
-                                />
+                                <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', marginBottom: '1rem' }}>
+                                    <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid #444', paddingBottom: '1rem' }}>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: '#aaa' }}>Analysis Report Configuration</label>
+                                        <textarea
+                                            value={analysisPrompt}
+                                            onChange={e => setAnalysisPrompt(e.target.value)}
+                                            style={{ width: '100%', minHeight: '100px', padding: '0.5rem', fontSize: '0.9rem', fontFamily: 'monospace', marginBottom: '0.5rem' }}
+                                            placeholder="Enter custom analysis prompt..."
+                                        />
+                                        <button
+                                            className="btn-secondary btn-xs"
+                                            onClick={() => handleSaveDefaultPrompt('analysis')}
+                                        >
+                                            Save as Default
+                                        </button>
+
+                                        <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                                            <div className="form-group">
+                                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>Temp <span>{config.analysis_temperature}</span></label>
+                                                <input type="range" min="0" max="2" step="0.1" value={config.analysis_temperature} onChange={e => setConfig({ ...config, analysis_temperature: e.target.value })} style={{ width: '100%' }} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>Top P <span>{config.analysis_top_p}</span></label>
+                                                <input type="range" min="0" max="1" step="0.05" value={config.analysis_top_p} onChange={e => setConfig({ ...config, analysis_top_p: e.target.value })} style={{ width: '100%' }} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Max Tokens</label>
+                                                <input type="number" value={config.analysis_max_tokens} onChange={e => setConfig({ ...config, analysis_max_tokens: e.target.value })} style={{ width: '100%', padding: '0.25rem', background: '#222', border: '1px solid #444', color: '#fff' }} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: '#aaa' }}>History Chat Configuration</label>
+                                        <textarea
+                                            value={historyChatPrompt}
+                                            onChange={e => setHistoryChatPrompt(e.target.value)}
+                                            style={{ width: '100%', minHeight: '100px', padding: '0.5rem', fontSize: '0.9rem', fontFamily: 'monospace', marginBottom: '0.5rem' }}
+                                            placeholder="Enter custom history chat prompt..."
+                                        />
+                                        <button
+                                            className="btn-secondary btn-xs"
+                                            onClick={() => handleSaveDefaultPrompt('history_chat')}
+                                        >
+                                            Save as Default
+                                        </button>
+
+                                        <div className="params-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                                            <div className="form-group">
+                                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>Temp <span>{config.history_chat_temperature}</span></label>
+                                                <input type="range" min="0" max="2" step="0.1" value={config.history_chat_temperature} onChange={e => setConfig({ ...config, history_chat_temperature: e.target.value })} style={{ width: '100%' }} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>Top P <span>{config.history_chat_top_p}</span></label>
+                                                <input type="range" min="0" max="1" step="0.05" value={config.history_chat_top_p} onChange={e => setConfig({ ...config, history_chat_top_p: e.target.value })} style={{ width: '100%' }} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Max Tokens</label>
+                                                <input type="number" value={config.history_chat_max_tokens} onChange={e => setConfig({ ...config, history_chat_max_tokens: e.target.value })} style={{ width: '100%', padding: '0.25rem', background: '#222', border: '1px solid #444', color: '#fff' }} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
 
                                 {/* RAG Configuration */}
                                 <div className="rag-config" style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }}>
@@ -1464,38 +1680,115 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                 </div>
 
                 <div className="history-content" style={{ display: 'flex', flexDirection: 'column' }}>
+                    {/* Filters */}
+                    <div className="filters-bar" style={{
+                        padding: '1rem 2rem',
+                        display: 'flex',
+                        gap: '1rem',
+                        borderBottom: '1px solid var(--border-color)',
+                        background: 'rgba(255,255,255,0.02)',
+                        flexWrap: 'wrap',
+                        alignItems: 'center'
+                    }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Patient Name</label>
+                            <select
+                                value={filterPatientName}
+                                onChange={e => setFilterPatientName(e.target.value)}
+                                className="filter-select"
+                                style={{ padding: '0.5rem', borderRadius: '4px', background: '#222', color: '#fff', border: '1px solid #444', minWidth: '150px' }}
+                            >
+                                <option value="">All Patients</option>
+                                {[...new Set(interactions.map(i => i.patient_name))].filter(Boolean).sort().map(name => (
+                                    <option key={name} value={name}>{name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Psychologist Model</label>
+                            <select
+                                value={filterChatbotModel}
+                                onChange={e => setFilterChatbotModel(e.target.value)}
+                                className="filter-select"
+                                style={{ padding: '0.5rem', borderRadius: '4px', background: '#222', color: '#fff', border: '1px solid #444', minWidth: '150px' }}
+                            >
+                                <option value="">All Models</option>
+                                {[...new Set(interactions.map(i => i.chatbot_model))].filter(Boolean).sort().map(model => (
+                                    <option key={model} value={model}>{model}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Patient Model</label>
+                            <select
+                                value={filterPatientModel}
+                                onChange={e => setFilterPatientModel(e.target.value)}
+                                className="filter-select"
+                                style={{ padding: '0.5rem', borderRadius: '4px', background: '#222', color: '#fff', border: '1px solid #444', minWidth: '150px' }}
+                            >
+                                <option value="">All Models</option>
+                                {[...new Set(interactions.map(i => i.patient_model))].filter(Boolean).sort().map(model => (
+                                    <option key={model} value={model}>{model}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {(filterPatientName || filterChatbotModel || filterPatientModel) && (
+                            <button
+                                onClick={() => {
+                                    setFilterPatientName('');
+                                    setFilterChatbotModel('');
+                                    setFilterPatientModel('');
+                                }}
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.9rem', marginTop: '1rem' }}
+                            >
+                                <X size={16} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Clear Filters
+                            </button>
+                        )}
+                    </div>
+
                     <div className="history-list" style={{ padding: '2rem' }}>
-                        {interactions.length === 0 ? (
-                            <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No saved interactions found.</p>
+                        {interactions
+                            .filter(i => !filterPatientName || i.patient_name === filterPatientName)
+                            .filter(i => !filterChatbotModel || i.chatbot_model === filterChatbotModel)
+                            .filter(i => !filterPatientModel || i.patient_model === filterPatientModel)
+                            .length === 0 ? (
+                            <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No interactions found matching filters.</p>
                         ) : (
                             <div style={{ display: 'grid', gap: '1rem' }}>
-                                {interactions.map((interaction, idx) => (
-                                    <div key={idx} className="history-item">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedInteractionIds.has(interaction.filename)}
-                                            onChange={() => toggleInteractionSelection(interaction.filename)}
-                                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                                        />
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                                                <h3>{interaction.patient_name}</h3>
-                                                <span className="date-badge">
-                                                    {new Date(interaction.timestamp).toLocaleString()}
-                                                </span>
+                                {interactions
+                                    .filter(i => !filterPatientName || i.patient_name === filterPatientName)
+                                    .filter(i => !filterChatbotModel || i.chatbot_model === filterChatbotModel)
+                                    .filter(i => !filterPatientModel || i.patient_model === filterPatientModel)
+                                    .map((interaction, idx) => (
+                                        <div key={idx} className="history-item">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedInteractionIds.has(interaction.filename)}
+                                                onChange={() => toggleInteractionSelection(interaction.filename)}
+                                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                            />
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                                                    <h3>{interaction.patient_name}</h3>
+                                                    <span className="date-badge">
+                                                        {new Date(interaction.timestamp).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                                <div className="meta-info">
+                                                    Models: <span style={{ color: 'var(--accent)' }}>{interaction.chatbot_model}</span> vs <span style={{ color: 'var(--accent)' }}>{interaction.patient_model}</span>
+                                                </div>
                                             </div>
-                                            <div className="meta-info">
-                                                Models: <span style={{ color: 'var(--accent)' }}>{interaction.chatbot_model}</span> vs <span style={{ color: 'var(--accent)' }}>{interaction.patient_model}</span>
-                                            </div>
+                                            <button className="btn-secondary btn-sm" onClick={() => handleViewInteraction(interaction.filename)}>
+                                                <Eye size={16} /> View
+                                            </button>
+                                            <button className="btn-secondary btn-sm" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => deleteInteraction(interaction.filename)}>
+                                                <Trash2 size={16} />
+                                            </button>
                                         </div>
-                                        <button className="btn-secondary btn-sm" onClick={() => handleViewInteraction(interaction.filename)}>
-                                            <Eye size={16} /> View
-                                        </button>
-                                        <button className="btn-secondary btn-sm" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => deleteInteraction(interaction.filename)}>
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         )}
                     </div>
@@ -1631,6 +1924,41 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         </div>
                     </div>
                 )}
+
+                {/* Auto Chat Modal */}
+                {pendingAutoChatPatient && (
+                    <div className="modal-overlay" style={{ border: '5px solid red', zIndex: 99999 }}>
+                        <div className="modal-content" style={{ maxWidth: '400px' }}>
+                            <div className="modal-header">
+                                <h3>Start Auto Chat</h3>
+                                <button className="btn-close" onClick={() => setPendingAutoChatPatient(null)}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <div style={{ padding: '1.5rem 0', color: '#ccc' }}>
+                                Start autonomous chat generation for {pendingAutoChatPatient.nombre}? This may take a while.
+                            </div>
+                            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setPendingAutoChatPatient(null)}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    onClick={() => {
+                                        console.log("Modal Accept clicked");
+                                        startAutoChat(pendingAutoChatPatient);
+                                        setPendingAutoChatPatient(null);
+                                    }}
+                                >
+                                    Accept
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -1662,6 +1990,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                     <X size={24} />
                 </button>
             </header>
+
 
             <div className="chat-area">
                 {messages.length === 0 ? (

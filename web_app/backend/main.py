@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import re
-from pypdf import PdfReader
+from datetime import datetime
 from orchestrator import DualLLMOrchestrator
 from rag_manager import RAGManager
 
@@ -230,7 +230,7 @@ def get_interactions():
                             patient_name = match.group(1).strip()
                         else:
                             # Fallback: try to find just the name line
-                            first_line = patient_prompt.split('\n')[0]
+                            first_line = patient_prompt.split('\\n')[0]
                             if "Sos el PACIENTE" in first_line:
                                 patient_name = first_line.replace("Sos el PACIENTE", "").replace(":", "").strip().split(',')[0].strip()
 
@@ -276,6 +276,22 @@ class AnalyzeRequest(BaseModel):
     model: str
     prompt: str
     document_filenames: Optional[List[str]] = []
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 0.9
+    top_k: Optional[int] = 40
+    max_tokens: Optional[int] = 2000
+    presence_penalty: Optional[float] = 0.1
+    frequency_penalty: Optional[float] = 0.2
+
+class GenerateInteractionRequest(BaseModel):
+    patient_profile: Dict
+    patient_system_prompt: str
+    psychologist_system_prompt: str
+    chatbot_model: str
+    patient_model: str
+    turns: Optional[int] = 10
+    psychologist_temperature: Optional[float] = 0.7
+    patient_temperature: Optional[float] = 0.7
 
 class AnalysisChatRequest(BaseModel):
     message: str
@@ -284,6 +300,12 @@ class AnalysisChatRequest(BaseModel):
     document_filenames: List[str]
     model: str
     system_prompt: str
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 0.9
+    top_k: Optional[int] = 40
+    max_tokens: Optional[int] = 2000
+    presence_penalty: Optional[float] = 0.1
+    frequency_penalty: Optional[float] = 0.2
 
 DOCUMENTS_DIR = os.path.join(BASE_DIR, "documentos")
 if not os.path.exists(DOCUMENTS_DIR):
@@ -351,6 +373,47 @@ def reindex_documents(req: ReindexRequest):
         print(f"Error re-indexing: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/generate_interaction")
+def generate_interaction(req: GenerateInteractionRequest):
+    try:
+        messages = orchestrator.simulate_interaction(
+            req.chatbot_model,
+            req.patient_model,
+            req.psychologist_system_prompt,
+            req.patient_system_prompt,
+            turns=req.turns,
+            psychologist_temperature=req.psychologist_temperature,
+            patient_temperature=req.patient_temperature
+        )
+        
+        # Save interaction
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        patient_name = req.patient_profile.get('nombre', 'Unknown').replace(" ", "_")
+        filename = f"auto_{patient_name}_{timestamp}.json"
+        filepath = os.path.join(DIALOGOS_DIR, filename)
+        
+        data = {
+            "timestamp": timestamp,
+            "config": {
+                "chatbot_model": req.chatbot_model,
+                "patient_model": req.patient_model,
+                "psychologist_system_prompt": req.psychologist_system_prompt,
+                "patient_system_prompt": req.patient_system_prompt,
+                "patient_name": req.patient_profile.get('nombre', 'Unknown'),
+                "mode": "autonomous"
+            },
+            "messages": messages
+        }
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+            
+        return {"status": "success", "filename": filename, "messages": messages}
+        
+    except Exception as e:
+        print(f"Error generating interaction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/analyze_interactions")
 def analyze_interactions_endpoint(req: AnalyzeRequest):
     try:
@@ -396,15 +459,9 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
                 doc_path = os.path.join(DOCUMENTS_DIR, doc_name)
                 if os.path.exists(doc_path):
                     try:
-                        content = ""
-                        if doc_name.lower().endswith('.pdf'):
-                            reader = PdfReader(doc_path)
-                            for page in reader.pages:
-                                content += page.extract_text() + "\n"
-                        else:
-                            # Try reading as text
-                            with open(doc_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                content = f.read()
+                        # Use docling via rag_manager to get text
+                        conv_result = rag_manager.doc_converter.convert(doc_path)
+                        content = conv_result.document.export_to_markdown()
                         
                         full_context += f"\n--- Document: {doc_name} ---\n{content}\n"
                     except Exception as e:
@@ -412,7 +469,17 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
                         full_context += f"\n--- Document: {doc_name} (Error reading content) ---\n"
         
         # 3. Call Orchestrator to analyze
-        analysis = orchestrator.analyze_interactions(req.model, full_context, req.prompt)
+        analysis = orchestrator.analyze_interactions(
+            req.model, 
+            full_context, 
+            req.prompt,
+            temperature=req.temperature,
+            top_p=req.top_p,
+            top_k=req.top_k,
+            max_tokens=req.max_tokens,
+            presence_penalty=req.presence_penalty,
+            frequency_penalty=req.frequency_penalty
+        )
         return {"analysis": analysis}
 
     except Exception as e:
@@ -458,7 +525,18 @@ def analysis_chat_endpoint(req: AnalysisChatRequest):
             full_context = "No context selected."
             
         # 4. Call Orchestrator
-        response = orchestrator.chat_analysis(req.model, req.history + [{"role": "user", "content": req.message}], req.system_prompt, full_context)
+        response = orchestrator.chat_analysis(
+            req.model, 
+            req.history + [{"role": "user", "content": req.message}], 
+            req.system_prompt, 
+            full_context,
+            temperature=req.temperature,
+            top_p=req.top_p,
+            top_k=req.top_k,
+            max_tokens=req.max_tokens,
+            presence_penalty=req.presence_penalty,
+            frequency_penalty=req.frequency_penalty
+        )
         
         return {"response": response}
         

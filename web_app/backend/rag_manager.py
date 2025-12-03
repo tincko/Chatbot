@@ -1,8 +1,8 @@
 import os
 import chromadb
 from chromadb.utils import embedding_functions
-from sentence_transformers import SentenceTransformer
-import pypdf
+from docling.document_converter import DocumentConverter
+from docling.chunking import HybridChunker
 
 class RAGManager:
     def __init__(self, persistence_directory="./chroma_db"):
@@ -15,59 +15,50 @@ class RAGManager:
             name="documents",
             embedding_function=self.embedding_function
         )
-
-    def _extract_text_from_pdf(self, filepath):
-        text = ""
-        try:
-            reader = pypdf.PdfReader(filepath)
-            for page in reader.pages:
-                text += page.extract_text() + "\n"
-        except Exception as e:
-            print(f"Error reading PDF {filepath}: {e}")
-        return text
-
-    def _extract_text_from_txt(self, filepath):
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                return f.read()
-        except Exception as e:
-            print(f"Error reading TXT {filepath}: {e}")
-            return ""
-
-    def _chunk_text(self, text, chunk_size=1000, overlap=200):
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
-            chunks.append(chunk)
-            start += chunk_size - overlap
-        return chunks
+        
+        # Initialize Docling
+        self.doc_converter = DocumentConverter()
 
     def add_document(self, filename, filepath, chunk_size=1000, overlap=200):
         # Remove existing chunks for this file first to avoid duplicates if re-uploading
         self.delete_document(filename)
 
-        if filename.lower().endswith('.pdf'):
-            text = self._extract_text_from_pdf(filepath)
-        else:
-            text = self._extract_text_from_txt(filepath)
+        try:
+            # Convert document using Docling
+            conv_result = self.doc_converter.convert(filepath)
+            doc = conv_result.document
+            
+            # Chunk the document
+            # We use HybridChunker with the requested chunk_size (max_tokens)
+            # Note: HybridChunker might not support 'overlap' directly in all versions, 
+            # but it handles semantic boundaries well.
+            chunker = HybridChunker(max_tokens=chunk_size)
+            chunk_iter = chunker.chunk(doc)
+            
+            chunks = []
+            metadatas = []
+            ids = []
+            
+            for i, chunk in enumerate(chunk_iter):
+                chunks.append(chunk.text)
+                meta = {
+                    "filename": filename,
+                    "chunk_index": i
+                }
+                metadatas.append(meta)
+                ids.append(f"{filename}_{i}")
 
-        if not text.strip():
+            if chunks:
+                self.collection.add(
+                    documents=chunks,
+                    ids=ids,
+                    metadatas=metadatas
+                )
+            return True
+
+        except Exception as e:
+            print(f"Error processing document {filename} with Docling: {e}")
             return False
-
-        chunks = self._chunk_text(text, chunk_size=chunk_size, overlap=overlap)
-        
-        ids = [f"{filename}_{i}" for i in range(len(chunks))]
-        metadatas = [{"filename": filename, "chunk_index": i} for i in range(len(chunks))]
-
-        if chunks:
-            self.collection.add(
-                documents=chunks,
-                ids=ids,
-                metadatas=metadatas
-            )
-        return True
 
     def delete_document(self, filename):
         try:

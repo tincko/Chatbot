@@ -2,3 +2,6 @@ fastapi
 uvicorn
 requests
 pydantic
+chromadb
+sentence-transformers
+docling

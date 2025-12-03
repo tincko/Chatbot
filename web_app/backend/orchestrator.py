@@ -352,7 +352,7 @@ class DualLLMOrchestrator:
                 "idiosincrasia": "-"
             }
 
-    def analyze_interactions(self, model, interactions_text, system_prompt=None):
+    def analyze_interactions(self, model, interactions_text, system_prompt=None, **kwargs):
         """
         Analyzes a set of interactions using the specified LLM.
         """
@@ -387,11 +387,10 @@ class DualLLMOrchestrator:
         return self._clean_think_tags(self._call_llm(
             model,
             messages,
-            temperature=0.7,
-            max_tokens=2000
+            **kwargs
         ))
 
-    def chat_analysis(self, model, history, system_prompt, context):
+    def chat_analysis(self, model, history, system_prompt, context, **kwargs):
         """
         Chat with the analysis model, including context from interactions and RAG.
         """
@@ -413,6 +412,75 @@ class DualLLMOrchestrator:
         return self._clean_think_tags(self._call_llm(
             model,
             messages,
-            temperature=0.7,
-            max_tokens=2000
+            **kwargs
         ))
+
+    def simulate_interaction(self, chatbot_model, patient_model, psychologist_system_prompt, patient_system_prompt, turns=5, **kwargs):
+        """
+        Simulates an autonomous interaction between the Psychologist and the Patient.
+        """
+        history = []
+        messages_log = []
+        
+        # Initial trigger: Psychologist greets (or we could have patient start)
+        # Let's have a standard greeting to kick it off, but NOT add it to history yet if we want the patient to 'start' real talk.
+        # Actually, let's assume the session starts with the Psychologist saying hello.
+        
+        last_psychologist_msg = "Hola. Soy tu psicólogo virtual. ¿Cómo te sentís hoy?"
+        messages_log.append({"role": "assistant", "content": last_psychologist_msg})
+        
+        print(f"--- Starting Simulation ({turns} turns) ---")
+
+        for i in range(turns):
+            # 1. Patient Responds
+            print(f"Turn {i+1}: Patient responding...")
+            # We use generate_suggestion_only logic but adapted
+            # The patient 'user' needs to see the psychologist 'assistant' message
+            
+            # Construct patient history for the patient model
+            # The patient model sees: System Prompt + History (where User=Psychologist, Assistant=Patient)
+            # But our 'history' list is standard (User=Patient, Assistant=Psychologist)
+            # So we need to invert roles for the patient model input
+            
+            patient_history_input = []
+            for msg in history:
+                if msg['role'] == 'user': # Patient said this
+                    patient_history_input.append({"role": "assistant", "content": msg['content']})
+                else: # Psychologist said this
+                    patient_history_input.append({"role": "user", "content": msg['content']})
+            
+            # Add the latest psychologist message
+            patient_history_input.append({"role": "user", "content": last_psychologist_msg})
+            
+            patient_messages = [{"role": "system", "content": patient_system_prompt}] + patient_history_input
+            
+            patient_response = self._clean_think_tags(self._call_llm(
+                patient_model,
+                patient_messages,
+                temperature=kwargs.get('patient_temperature', 0.7),
+                max_tokens=kwargs.get('patient_max_tokens', 600)
+            ))
+            
+            # Add to main history and log
+            history.append({"role": "user", "content": patient_response})
+            messages_log.append({"role": "user", "content": patient_response})
+            
+            # 2. Psychologist Responds
+            print(f"Turn {i+1}: Psychologist responding...")
+            
+            psico_messages = [{"role": "system", "content": psychologist_system_prompt}] + history
+            
+            psychologist_response = self._clean_think_tags(self._call_llm(
+                chatbot_model,
+                psico_messages,
+                temperature=kwargs.get('psychologist_temperature', 0.7),
+                max_tokens=kwargs.get('psychologist_max_tokens', 600)
+            ))
+            
+            last_psychologist_msg = psychologist_response
+            
+            # Add to main history and log
+            history.append({"role": "assistant", "content": psychologist_response})
+            messages_log.append({"role": "assistant", "content": psychologist_response})
+            
+        return messages_log

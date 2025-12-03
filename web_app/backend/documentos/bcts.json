@@ -1,0 +1,104 @@
+{
+  "BCTs": [
+    {
+      "id": "bct_01",
+      "nombre": "Prompts y señales",
+      "familia": "Prompts/Cues",
+      "definicion": "Introducir recordatorios ambientales o señales que ayuden al paciente a recordar la conducta.",
+      "ejemplos_clinicos": [
+        "Poner la medicación en un lugar visible antes de dormir.",
+        "Usar una alarma suave en el celular a la hora exacta de la dosis."
+      ]
+    },
+    {
+      "id": "bct_02",
+      "nombre": "Plan de acción",
+      "familia": "Action Planning",
+      "definicion": "Ayudar al paciente a definir cuándo, cómo y dónde realizará la conducta deseada.",
+      "ejemplos_clinicos": [
+        "Elegir una hora fija cada noche para la medicación.",
+        "Asociar la toma con una rutina diaria (por ejemplo, antes de lavarse los dientes)."
+      ]
+    },
+    {
+      "id": "bct_03",
+      "nombre": "Reestructuración del entorno",
+      "familia": "Restructuring the Physical Environment",
+      "definicion": "Modificar el entorno físico del paciente para facilitar la conducta.",
+      "ejemplos_clinicos": [
+        "Colocar la medicación y un vaso de agua en la mesa de luz.",
+        "Organizar un pastillero semanal en un lugar accesible."
+      ]
+    },
+    {
+      "id": "bct_04",
+      "nombre": "Feedback sobre la conducta",
+      "familia": "Feedback and Monitoring",
+      "definicion": "Dar retroalimentación al paciente sobre su progreso o consistencia.",
+      "ejemplos_clinicos": [
+        "Reconocer cuando cumplió varios días seguidos de adherencia.",
+        "Mostrar mejora en sus patrones de toma."
+      ]
+    },
+    {
+      "id": "bct_05",
+      "nombre": "Auto-monitoreo",
+      "familia": "Feedback and Monitoring",
+      "definicion": "Invitar al paciente a registrar su propio comportamiento para aumentar la conciencia.",
+      "ejemplos_clinicos": [
+        "Usar un checklist diario de toma de medicación.",
+        "Marcar la dosis tomada en una app o calendario."
+      ]
+    },
+    {
+      "id": "bct_06",
+      "nombre": "Reforzamiento positivo",
+      "familia": "Reward and Threat",
+      "definicion": "Reforzar verbalmente los avances para aumentar la motivación.",
+      "ejemplos_clinicos": [
+        "Felicitar al paciente cuando cumple objetivos de adherencia.",
+        "Agradecer su compromiso y reconocer su esfuerzo."
+      ]
+    },
+    {
+      "id": "bct_07",
+      "nombre": "Información sobre consecuencias",
+      "familia": "Natural Consequences",
+      "definicion": "Explicar de manera simple y no alarmante las consecuencias de adherencia o incumplimiento.",
+      "ejemplos_clinicos": [
+        "Recordar que tomar la medicación a tiempo protege el injerto.",
+        "Explicar que olvidos frecuentes pueden requerir ajustes o controles médicos."
+      ]
+    },
+    {
+      "id": "bct_08",
+      "nombre": "Apoyo social",
+      "familia": "Social Support",
+      "definicion": "Fomentar que el paciente reciba apoyo emocional o práctico de otra persona.",
+      "ejemplos_clinicos": [
+        "Pedirle a un familiar que te recuerde la dosis de la noche.",
+        "Compartir con alguien cercano tu objetivo de mejorar la adherencia."
+      ]
+    },
+    {
+      "id": "bct_09",
+      "nombre": "Establecimiento de metas",
+      "familia": "Goals and Planning",
+      "definicion": "Ayudar a definir metas realistas y alcanzables relacionadas con la conducta.",
+      "ejemplos_clinicos": [
+        "Proponerse una semana completa de adherencia nocturna.",
+        "Crear metas para reducir olvidos del 30% al 10%."
+      ]
+    },
+    {
+      "id": "bct_10",
+      "nombre": "Identificación de barreras",
+      "familia": "Problem Solving",
+      "definicion": "Detectar barreras psicológicas o contextuales y generar soluciones concretas.",
+      "ejemplos_clinicos": [
+        "Si te dormís temprano, mover la dosis a un horario más temprano.",
+        "Si te olvidás porque estás fuera de casa, llevar un blister extra."
+      ]
+    }
+  ]
+}
