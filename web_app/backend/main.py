@@ -53,12 +53,30 @@ class SuggestionRequest(BaseModel):
     max_tokens: Optional[int] = 600
     presence_penalty: Optional[float] = 0.1
     frequency_penalty: Optional[float] = 0.2
+    rag_documents: Optional[List[str]] = []
+
+class ChatResponse(BaseModel):
+    response: str
+
+class SuggestionRequest(BaseModel):
+    history: List[Dict[str, str]]
+    user_message: str
+    psychologist_response: str
+    patient_model: str
+    patient_system_prompt: Optional[str] = None
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 0.9
+    top_k: Optional[int] = 40
+    max_tokens: Optional[int] = 600
+    presence_penalty: Optional[float] = 0.1
+    frequency_penalty: Optional[float] = 0.2
 
 class SuggestionResponse(BaseModel):
     suggested_reply: str
 
 class GenerateProfileRequest(BaseModel):
     model: str
+    guidance: Optional[str] = None
 
 @app.get("/api/models")
 def get_models():
@@ -164,6 +182,7 @@ def save_prompts(prompts: Dict[str, str]):
         
         existing.update(prompts)
         
+
         with open(PROMPTS_FILE, "w", encoding="utf-8") as f:
             json.dump(existing, f, indent=2, ensure_ascii=False)
         return {"status": "success"}
@@ -173,7 +192,7 @@ def save_prompts(prompts: Dict[str, str]):
 @app.post("/api/generate_profile")
 def generate_profile(request: GenerateProfileRequest):
     try:
-        profile = orchestrator.generate_patient_profile(request.model)
+        profile = orchestrator.generate_patient_profile(request.model, request.guidance)
         return profile
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -376,7 +395,7 @@ def reindex_documents(req: ReindexRequest):
                 filepath = os.path.join(DOCUMENTS_DIR, filename)
                 rag_manager.add_document(filename, filepath, chunk_size=req.chunk_size, overlap=req.overlap)
         
-        return {"status": "success", "message": f"Re-indexed {len(files)} documents."}
+        return {"status": "success", "message": f"Se re-indexaron {len(files)} documentos."}
     except Exception as e:
         print(f"Error re-indexing: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -384,6 +403,7 @@ def reindex_documents(req: ReindexRequest):
 @app.post("/api/generate_interaction")
 def generate_interaction(req: GenerateInteractionRequest):
     try:
+        print(f"Received interaction generation request for patient: {req.patient_profile.get('nombre')} with {req.turns} turns.")
         messages = orchestrator.simulate_interaction(
             req.chatbot_model,
             req.patient_model,
@@ -398,7 +418,9 @@ def generate_interaction(req: GenerateInteractionRequest):
         now = datetime.now()
         timestamp_iso = now.isoformat()
         timestamp_safe = now.strftime("%Y-%m-%d_%H-%M-%S")
-        patient_name = req.patient_profile.get('nombre', 'Unknown').replace(" ", "_")
+        patient_name = req.patient_profile.get('nombre', 'Unknown')
+        # Sanitize filename: remove invalid chars for Windows/Linux filesystems
+        patient_name = re.sub(r'[<>:"/\\|?*]', '', patient_name).strip().replace(" ", "_")
         filename = f"auto_{patient_name}_{timestamp_safe}.json"
         filepath = os.path.join(DIALOGOS_DIR, filename)
         
@@ -465,7 +487,7 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
                     interactions_content.append(conversation_text)
         
         if not interactions_content and not req.document_filenames: # Modified condition
-            return {"analysis": "No valid interactions or documents found to analyze."}
+            return {"analysis": "No se encontraron interacciones o documentos válidos para analizar."}
             
 
 

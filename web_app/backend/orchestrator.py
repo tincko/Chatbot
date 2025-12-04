@@ -2,11 +2,12 @@ import requests
 import json
 import re
 import os
+import ast
 
 # Configuration defaults (can be overridden)
 DEFAULT_API_URL = "http://127.0.0.1:1234/v1/chat/completions"
-DEFAULT_MODEL_CHATBOT = "deepseek/deepseek-r1-0528-qwen3-8b" # Psychologist
-DEFAULT_MODEL_PATIENT = "mental_llama3.1-8b-mix-sft" # Patient Helper
+DEFAULT_MODEL_CHATBOT = "mental_llama3.1-8b-mix-sft" # Psychologist
+DEFAULT_MODEL_PATIENT = "openai/gpt-oss-20b" # Patient Helper
 
 class DualLLMOrchestrator:
     def __init__(self, api_url=None):
@@ -42,7 +43,7 @@ class DualLLMOrchestrator:
                     error_msg += f" Response: {response.text}"
             
             print(f"Error calling LLM {model}: {error_msg}")
-            return f"[Error: {error_msg}]"
+            raise Exception(f"LLM Call Failed: {error_msg}")
 
     def _clean_think_tags(self, text: str) -> str:
         """Removes thinking blocks and other model artifacts to extract the final response."""
@@ -240,21 +241,27 @@ class DualLLMOrchestrator:
             pass
         return [DEFAULT_MODEL_CHATBOT, DEFAULT_MODEL_PATIENT]
 
-    def generate_patient_profile(self, model):
+    def generate_patient_profile(self, model, guidance=None):
         """
         Generates a random patient profile using the LLM.
         Returns a dictionary with the patient's details.
         """
         system_prompt = (
             "You are a helpful assistant that generates synthetic medical data. "
-            "Output ONLY valid JSON. Do not include any explanations, markdown formatting, or conversational text."
+            "Output ONLY valid JSON. Do not include any explanations, markdown formatting, or conversational text. "
+            "Use double quotes for all keys and string values. Escape inner quotes properly."
         )
         
+        guidance_text = ""
+        if guidance:
+            guidance_text = f"\nINSTRUCCIONES ADICIONALES DEL USUARIO: {guidance}\n"
+
         user_prompt = (
             "Genera un perfil JSON de un paciente de trasplante renal.\n"
             "IMPORTANTE: Varía la edad (entre 18 y 80 años), el género y el contexto social.\n"
             "Asegúrate de que todas las características (contexto, estilo de comunicación, dificultades, etc.) "
-            "sean COHERENTES con la edad y situación de vida elegida.\n\n"
+            "sean COHERENTES con la edad y situación de vida elegida.\n"
+            f"{guidance_text}\n"
             "Campos requeridos en el JSON:\n"
             "{\n"
             '  "nombre": "Nombre y Apellido (ficticio)",\n'
@@ -279,7 +286,8 @@ class DualLLMOrchestrator:
         
         try:
             # Force use of the specific model if requested by user logic, or fallback to default
-            target_model = model if model else DEFAULT_MODEL_PATIENT
+            # target_model = model if model else DEFAULT_MODEL_PATIENT
+            target_model = "openai/gpt-oss-20b" # Force specific model for profile generation
             print(f"Generating profile with model: {target_model}")
             
             # Use a slightly lower temperature for more deterministic formatting
@@ -289,68 +297,61 @@ class DualLLMOrchestrator:
             # 1. Clean think tags
             response_text = self._clean_think_tags(response_text)
             
-            # 2. Extract JSON using find/rfind (robust against pre/post text)
+            # 2. Remove markdown code blocks if present
+            response_text = re.sub(r'```json\s*', '', response_text)
+            response_text = re.sub(r'```\s*', '', response_text)
+
+            # 3. Extract JSON using find/rfind (robust against pre/post text)
             start = response_text.find('{')
             end = response_text.rfind('}') + 1
             
+            data = None
+            
             if start != -1 and end != -1:
                 json_str = response_text[start:end]
-                import json
                 try:
                     data = json.loads(json_str)
-                    # Ensure all values are strings
-                    for key, value in data.items():
-                        if isinstance(value, list):
-                            data[key] = ", ".join(map(str, value))
-                        elif isinstance(value, dict):
-                            data[key] = json.dumps(value, ensure_ascii=False)
-                        elif not isinstance(value, str):
-                            data[key] = str(value)
-                    return data
                 except json.JSONDecodeError:
-                    print("Extracted text was not valid JSON. Trying to fix common issues...")
+                    print("JSON decode error. Trying ast.literal_eval fallback...")
                     try:
-                        fixed_str = json_str.replace("'", '"')
-                        data = json.loads(fixed_str)
-                        for key, value in data.items():
-                            if isinstance(value, list):
-                                data[key] = ", ".join(map(str, value))
-                            elif isinstance(value, dict):
-                                data[key] = json.dumps(value, ensure_ascii=False)
-                            elif not isinstance(value, str):
-                                data[key] = str(value)
-                        return data
+                        # ast.literal_eval can handle Python dict syntax (single quotes, etc.)
+                        data = ast.literal_eval(json_str)
+                    except Exception as e:
+                        print(f"ast.literal_eval failed: {e}")
+                        # Last ditch effort: try to fix common quote issues
+                        try:
+                            fixed_str = json_str.replace("'", '"')
+                            data = json.loads(fixed_str)
+                        except:
+                            pass
+
+            if not data:
+                 # Try parsing the whole text if substring failed
+                try:
+                    data = json.loads(response_text)
+                except:
+                    try:
+                        data = ast.literal_eval(response_text)
                     except:
                         pass
 
-            # 3. Fallback: try parsing the whole text
-            import json
-            data = json.loads(response_text)
-            for key, value in data.items():
-                if isinstance(value, list):
-                    data[key] = ", ".join(map(str, value))
-                elif isinstance(value, dict):
-                    data[key] = json.dumps(value, ensure_ascii=False)
-                elif not isinstance(value, str):
-                    data[key] = str(value)
-            return data
+            if data and isinstance(data, dict):
+                # Ensure all values are strings
+                for key, value in data.items():
+                    if isinstance(value, list):
+                        data[key] = ", ".join(map(str, value))
+                    elif isinstance(value, dict):
+                        data[key] = json.dumps(value, ensure_ascii=False)
+                    elif not isinstance(value, str):
+                        data[key] = str(value)
+                return data
+            else:
+                raise ValueError("Could not parse valid JSON or Dictionary from response")
 
         except Exception as e:
             print(f"Error generating profile: {e}")
-            return {
-                "nombre": "Error al generar",
-                "edad": "0",
-                "tipo_trasplante": "Intente nuevamente",
-                "medicacion": "Verifique la consola del servidor",
-                "adherencia_previa": "-",
-                "contexto": f"Error: {str(e)}",
-                "nivel_educativo": "-",
-                "estilo_comunicacion": "-",
-                "fortalezas": "-",
-                "dificultades": "-",
-                "notas_equipo": "-",
-                "idiosincrasia": "-"
-            }
+            print(f"Error generating profile: {e}")
+            raise e
 
     def analyze_interactions(self, model, interactions_text, system_prompt=None, **kwargs):
         """
