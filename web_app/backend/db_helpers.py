@@ -244,6 +244,15 @@ def interaction_to_dict(interaction: Interaction) -> Dict[str, Any]:
     }
 
 
+def get_interactions_by_filenames(db: Session, filenames: List[str]) -> List[Dict[str, Any]]:
+    """Get multiple interactions by their filenames (for analysis)"""
+    interactions = db.query(Interaction).filter(
+        Interaction.filename.in_(filenames)
+    ).all()
+    
+    return [interaction_to_dict(i) for i in interactions]
+
+
 # ========== SEARCH & ANALYTICS ==========
 
 def search_interactions_by_patient(db: Session, patient_id: str) -> List[Dict[str, Any]]:

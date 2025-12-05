@@ -1,9 +1,0 @@
-===== INICIO DE SIMULACIÓN =====
-Fecha/Hora: 2025-11-28 12:29:31.539747
-================================================================================
-
- MODELO PACIENTE: openai/gpt-oss-20b
-
- MODELO PSICO: deepseek/deepseek-r1-0528-qwen3-8b
-
-

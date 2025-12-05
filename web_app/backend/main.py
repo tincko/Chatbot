@@ -9,6 +9,13 @@ import re
 from datetime import datetime
 from orchestrator import DualLLMOrchestrator
 from rag_manager import RAGManager
+from sqlalchemy.orm import Session
+from database import get_db, init_db
+import db_helpers
+
+# Initialize database on startup
+init_db()
+
 
 from sqlalchemy.orm import Session
 from database import get_db, init_db
@@ -393,44 +400,38 @@ def generate_interaction(req: GenerateInteractionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/analyze_interactions")
-def analyze_interactions_endpoint(req: AnalyzeRequest):
+def analyze_interactions_endpoint(req: AnalyzeRequest, db: Session = Depends(get_db)):
     try:
-        # 1. Load content of all selected files
+        # 1. Load content of all selected files from database
         interactions_content = []
         patient_models = set()
         patient_prompts = set()
-        for filename in req.filenames:
-            filepath = os.path.join(DIALOGOS_DIR, filename)
-            if os.path.exists(filepath):
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    
-                    # Extract relevant info for analysis
-                    timestamp = data.get('timestamp', 'Unknown Date')
-                    config = data.get('config', {})
-                    
-                    if 'patient_model' in config:
-                        patient_models.add(config['patient_model'])
-                    if 'patient_system_prompt' in config:
-                        patient_prompts.add(config['patient_system_prompt'])
-                    messages = data.get('messages', [])
-                    
-                    # Extract patient name from config (similar logic to get_interactions)
-                    patient_name = "Unknown Patient"
-                    patient_prompt = config.get('patient_system_prompt', '')
-                    # import re # This import is now global
-                    match = re.search(r"Sos el PACIENTE[:\s]+(.*?)(?:,|\.|;|\n|$)", patient_prompt, re.IGNORECASE)
-                    if match:
-                        patient_name = match.group(1).strip()
-                    
-                    # Format conversation
-                    conversation_text = f"--- Interaction Date: {timestamp} | Patient: {patient_name} ---\n"
-                    for msg in messages:
-                        role = msg.get('role', 'unknown')
-                        content = msg.get('content', '')
-                        conversation_text += f"{role.upper()}: {content}\n"
-                    
-                    interactions_content.append(conversation_text)
+        
+        # Get interactions from database
+        interactions = db_helpers.get_interactions_by_filenames(db, req.filenames)
+        
+        for data in interactions:
+            # Extract relevant info for analysis
+            timestamp = data.get('timestamp', 'Unknown Date')
+            config = data.get('config', {})
+            
+            if 'patient_model' in config:
+                patient_models.add(config['patient_model'])
+            if 'patient_system_prompt' in config:
+                patient_prompts.add(config['patient_system_prompt'])
+            messages = data.get('messages', [])
+            
+            # Extract patient name from config
+            patient_name = config.get('patient_name', 'Unknown Patient')
+            
+            # Format conversation
+            conversation_text = f"--- Interaction Date: {timestamp} | Patient: {patient_name} ---\n"
+            for msg in messages:
+                role = msg.get('role', 'unknown')
+                content = msg.get('content', '')
+                conversation_text += f"{role.upper()}: {content}\n"
+            
+            interactions_content.append(conversation_text)
         
         if not interactions_content and not req.document_filenames: # Modified condition
             return {"analysis": "No se encontraron interacciones o documentos válidos para analizar."}
@@ -487,21 +488,23 @@ def analyze_interactions_endpoint(req: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/analysis_chat")
-def analysis_chat_endpoint(req: AnalysisChatRequest):
+def analysis_chat_endpoint(req: AnalysisChatRequest, db: Session = Depends(get_db)):
     try:
-        # 1. Get Interactions Content
+        # 1. Get Interactions Content from database
         interactions_text = ""
-        for filename in req.interaction_filenames:
-            filepath = os.path.join(DIALOGOS_DIR, filename)
-            if os.path.exists(filepath):
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    # Format conversation (simplified)
-                    timestamp = data.get('timestamp', 'Unknown')
-                    patient = data.get('config', {}).get('patient_name', 'Unknown')
-                    interactions_text += f"\n--- Interaction: {filename} ({timestamp}, Patient: {patient}) ---\n"
-                    for msg in data.get('messages', []):
-                        interactions_text += f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}\n"
+        
+        # Get interactions from database
+        interactions = db_helpers.get_interactions_by_filenames(db, req.interaction_filenames)
+        
+        for data in interactions:
+            timestamp = data.get('timestamp', 'Unknown')
+            patient = data.get('config', {}).get('patient_name', 'Unknown')
+            # Find filename from all interactions
+            all_ints = db_helpers.get_all_interactions(db)
+            filename = next((i['filename'] for i in all_ints if i['timestamp'] == timestamp), 'unknown')
+            interactions_text += f"\n--- Interaction: {filename} ({timestamp}, Patient: {patient}) ---\n"
+            for msg in data.get('messages', []):
+                interactions_text += f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}\n"
         
         # 2. Get RAG Content
         rag_text = ""
