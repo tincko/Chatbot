@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
+import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare, Clock } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -69,6 +69,10 @@ function App() {
         patient_instructions: DEFAULT_PATIENT_INSTRUCTIONS
     });
 
+    // New Day modal states
+    const [showNewDayModal, setShowNewDayModal] = useState(false);
+    const [newDaySituation, setNewDaySituation] = useState('');
+
     // Collapsible states
     const [showPsychologistPrompt, setShowPsychologistPrompt] = useState(false);
     const [showPatientPrompt, setShowPatientPrompt] = useState(false);
@@ -76,7 +80,7 @@ function App() {
     const [showRagConfig, setShowRagConfig] = useState(false);
 
     const [config, setConfig] = useState({
-        chatbot_model: 'deepseek/deepseek-r1-0528-qwen3-8b',
+        chatbot_model: 'mental_llama3.1-8b-mix-sft',
         patient_model: 'mental_llama3.1-8b-mix-sft',
         psychologist_system_prompt: DEFAULT_PSYCHOLOGIST_PROMPT,
         patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu médico o psicólogo sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del psicólogo cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al psicólogo (por ejemplo: 'hola, buen día doctor…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes.",
@@ -267,9 +271,7 @@ function App() {
             return;
         }
         setView('chat');
-        if (!soloMode && config.patient_name) {
-            generateInitialSuggestion();
-        }
+        // No longer auto-generate initial suggestion - user will click button when ready
     };
 
     const endSession = () => {
@@ -301,6 +303,20 @@ function App() {
 
             if (res.ok) {
                 const data = await res.json();
+
+                // Update the patient's last_interaction_file if a patient is selected
+                if (config.patient_name) {
+                    const patientToUpdate = patients.find(p => p.nombre === config.patient_name);
+                    if (patientToUpdate) {
+                        const updatedPatient = { ...patientToUpdate, last_interaction_file: data.filename };
+                        const updatedPatients = patients.map(p =>
+                            p.id === patientToUpdate.id ? updatedPatient : p
+                        );
+                        setPatients(updatedPatients);
+                        await savePatientsToBackend(updatedPatients);
+                    }
+                }
+
                 setMessages([]);
                 setView('setup');
                 setNotification(`Interacción guardada exitosamente como ${data.filename}`);
@@ -327,7 +343,10 @@ function App() {
         setLoading('psychologist');
 
         try {
-            const history = messages.map(m => ({ role: m.role, content: m.content }));
+            // Filter out 'episode' and 'system' messages for psychologist - they only know what patient tells them
+            const history = messages
+                .filter(m => m.role !== 'system' && m.role !== 'episode')
+                .map(m => ({ role: m.role, content: m.content }));
 
             // Step 1: Get Psychologist Response
             const res = await fetch('http://localhost:8000/api/chat', {
@@ -356,34 +375,7 @@ function App() {
             const botMsg = { role: 'assistant', content: data.response };
             setMessages(prev => [...prev, botMsg]);
 
-            // Step 2: Get Patient Suggestion
-            if (!soloMode) {
-                setLoading('patient');
-
-                const suggestRes = await fetch('http://localhost:8000/api/suggest', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        history: history,
-                        user_message: userMsg.content,
-                        psychologist_response: data.response,
-                        patient_model: config.patient_model,
-                        patient_system_prompt: config.patient_system_prompt,
-                        temperature: parseFloat(config.patient_temperature),
-                        top_p: parseFloat(config.patient_top_p),
-                        top_k: parseInt(config.patient_top_k),
-                        max_tokens: parseInt(config.patient_max_tokens),
-                        presence_penalty: parseFloat(config.patient_presence_penalty),
-                        frequency_penalty: parseFloat(config.patient_frequency_penalty)
-                    })
-                });
-
-                if (suggestRes.ok) {
-                    const suggestData = await suggestRes.json();
-                    setSuggestedReply(suggestData.suggested_reply);
-                    setInput(suggestData.suggested_reply);
-                }
-            }
+            // No longer auto-generate suggestion - user will click button instead
 
         } catch (error) {
             console.error("Error in chat flow:", error);
@@ -393,21 +385,68 @@ function App() {
         }
     };
 
-    const generateInitialSuggestion = async () => {
+    const generateSuggestion = async () => {
+        if (soloMode) return; // Don't generate suggestions in solo mode
+
         setLoading('patient');
         try {
-            // We simulate a "start" of conversation where the psychologist hasn't said anything yet,
-            // or we provide a context prompt to the patient to start talking.
-            // Since the /api/suggest endpoint expects a psychologist_response, we can pass an empty string
-            // or a generic greeting to trigger the patient's opening.
+            // Get the last psychologist response
+            const assistantMessages = messages.filter(m => m.role === 'assistant');
+            const lastPsychologistResponse = assistantMessages.length > 0
+                ? assistantMessages[assistantMessages.length - 1].content
+                : "Hola. ¿Cómo te sentís hoy?";
+
+            // Get the last user message
+            const userMessages = messages.filter(m => m.role === 'user');
+            const lastUserMessage = userMessages.length > 0
+                ? userMessages[userMessages.length - 1].content
+                : "";
+
+            // Find the most recent episode to ensure it's referenced
+            const episodeMessages = messages.filter(m => m.role === 'episode');
+            const lastEpisode = episodeMessages.length > 0
+                ? episodeMessages[episodeMessages.length - 1]
+                : null;
+
+            // Filter system messages but convert episode to system
+            let history = messages
+                .filter(m => m.role !== 'system')
+                .map(m => ({
+                    role: m.role === 'episode' ? 'system' : m.role,
+                    content: m.content
+                }));
+
+            // If there's a recent episode, add instruction at THE BEGINNING for maximum priority
+            if (lastEpisode) {
+                // Extract the actual event text (remove decorative part)
+                const eventText = lastEpisode.content.replace(/📅\s*\*\*Nuevo día - Episodio:\*\*\s*\n\n/g, '').trim();
+
+                // Insert at the BEGINNING of history
+                history.unshift({
+                    role: 'system',
+                    content: `!!!! ALERTA URGENTE - LEER PRIMERO !!!!
+
+EVENTO QUE TE OCURRIÓ HOY (DEBES MENCIONARLO):
+"${eventText}"
+
+Tu PRIMERA frase DEBE ser sobre este evento. No hables de otra cosa primero.
+
+Formato obligatorio:
+"Hola doctor, [evento que te pasó hoy]..."
+
+Ejemplo: "Hola doctor, buenos días. Mire, hoy nuevamente me olvidé de tomar los medicamentos..."
+
+EMPIEZA TU RESPUESTA MENCIONANDO ESTE EVENTO. ES OBLIGATORIO.`
+                });
+            }
 
             const suggestRes = await fetch('http://localhost:8000/api/suggest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    history: [],
-                    user_message: "", // No previous user message
-                    psychologist_response: "Hola. ¿Cómo te sentís hoy?", // Implicit greeting to trigger response
+                    history: history,
+                    user_message: lastUserMessage,
+                    psychologist_response: lastPsychologistResponse,
                     patient_model: config.patient_model,
                     patient_system_prompt: config.patient_system_prompt,
                     temperature: parseFloat(config.patient_temperature),
@@ -425,10 +464,84 @@ function App() {
                 setInput(suggestData.suggested_reply);
             }
         } catch (error) {
-            console.error("Error generating initial suggestion:", error);
+            console.error("Error generating suggestion:", error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const simulateNewDay = () => {
+        setNewDaySituation(''); // Reset situation text
+        setShowNewDayModal(true); // Open modal
+    };
+
+    const applyNewDay = () => {
+        console.log("applyNewDay called with situation:", newDaySituation);
+
+        const situationText = newDaySituation.trim()
+            ? `\n\nSITUACIÓN ESPECÍFICA QUE OCURRIÓ HOY:\n${newDaySituation}\n\nEl paciente DEBE mencionar esta situación de forma natural en su conversación.`
+            : '';
+
+        const timeGapMessage = {
+            role: 'system',
+            content: `Ha pasado un día completo desde la última conversación.
+
+Al continuar, el paciente debe:
+1. Saludar de nuevo al psicólogo (ej: "Hola doctor", "Buenos días", "¿Cómo está?")
+2. Contar qué pasó con la medicación desde ayer:
+   - Si siguió el consejo anterior
+   - Si se olvidó de tomar alguna dosis
+   - Si hubo algún problema nuevo o cambio en su situación
+3. Mencionar eventos nuevos relevantes que puedan haber ocurrido (visita médica, síntomas, trabajo, familia)
+4. Mantener coherencia con su perfil y conversaciones previas${situationText}
+
+El paciente debe actuar naturalmente, como si realmente hubiera pasado un día, sin mencionar explícitamente "pasó un día".`
+        };
+
+        setMessages(prev => {
+            const messagesToAdd = [timeGapMessage];
+
+            // If there's a specific situation, add a visible "episode" message
+            if (newDaySituation.trim()) {
+                const episodeMessage = {
+                    role: 'episode',
+                    content: `📅 **Nuevo día - Episodio:**\n\n${newDaySituation}`
+                };
+                messagesToAdd.unshift(episodeMessage); // Add episode message first
+            }
+
+            const updated = [...prev, ...messagesToAdd];
+            console.log("Messages updated. New length:", updated.length);
+            return updated;
+        });
+
+        // Close modal
+        setShowNewDayModal(false);
+        setNewDaySituation('');
+
+        // Visual feedback
+        const notification = document.createElement('div');
+        notification.textContent = '⏰ Simulando paso de 1 día...';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transition = 'opacity 0.3s';
+            setTimeout(() => notification.remove(), 300);
+        }, 2000);
+
+        console.log("Manual time gap (1 day) injected into conversation");
     };
 
     const [patients, setPatients] = useState([
@@ -452,7 +565,8 @@ function App() {
     const [newPatient, setNewPatient] = useState({
         nombre: '', edad: '', tipo_trasplante: '', medicacion: '', adherencia_previa: '',
         contexto: '', nivel_educativo: '', estilo_comunicacion: '', fortalezas: '',
-        dificultades: '', notas_equipo: '', idiosincrasia: ''
+        dificultades: '', notas_equipo: '', idiosincrasia: '',
+        preferred_patient_model: '', last_interaction_file: ''
     });
 
     const handleFileUpload = async (files) => {
@@ -643,12 +757,13 @@ ${instructions}`;
         setNewPatient({
             id: '', nombre: '', edad: '', tipo_trasplante: '', medicacion: '', adherencia_previa: '',
             contexto: '', nivel_educativo: '', estilo_comunicacion: '', fortalezas: '',
-            dificultades: '', notas_equipo: '', idiosincrasia: ''
+            dificultades: '', notas_equipo: '', idiosincrasia: '',
+            preferred_patient_model: '', last_interaction_file: ''
         });
         setShowPatientForm(false);
     };
 
-    const selectPatient = (patient) => {
+    const selectPatient = async (patient) => {
         setSelectedPatientId(patient.id);
         const prompt = generatePatientPrompt(patient);
 
@@ -668,12 +783,62 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
 - Idiosincrasia: ${patient.idiosincrasia}
 `;
 
+        // Use patient's preferred model or fallback to global config
+        const patientModel = patient.preferred_patient_model || config.patient_model;
+
         setConfig({
             ...config,
             patient_system_prompt: prompt,
             patient_name: patient.nombre,
+            patient_model: patientModel,
             psychologist_system_prompt: (defaultPrompts.psychologist_base || DEFAULT_PSYCHOLOGIST_PROMPT) + "\n" + patientContext
         });
+
+        // Load previous interaction history if it exists
+        if (patient.last_interaction_file) {
+            try {
+                const res = await fetch(`http://localhost:8000/api/interactions/${patient.last_interaction_file}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.messages && data.messages.length > 0) {
+                        // Calculate time elapsed since last interaction
+                        const lastTimestamp = new Date(data.timestamp);
+                        const now = new Date();
+                        const hoursElapsed = (now - lastTimestamp) / (1000 * 60 * 60);
+                        const daysElapsed = Math.floor(hoursElapsed / 24);
+
+                        // If more than 6 hours have passed, inject a time gap message
+                        if (hoursElapsed > 6) {
+                            const timeGapMessage = {
+                                role: 'system',
+                                content: `Han pasado ${daysElapsed > 0 ? daysElapsed + ' día(s)' : 'varias horas'} desde la última conversación (${lastTimestamp.toLocaleDateString()}).
+                                
+Al comenzar esta nueva sesión, el paciente debe:
+1. Saludar de nuevo al psicólogo (ej: "Hola doctor", "Buenos días")
+2. Contar brevemente qué pasó con la medicación en este tiempo:
+   - Si siguió el consejo anterior
+   - Si se olvidó de tomar alguna dosis
+   - Si hubo algún problema nuevo o cambio en su situación
+3. Mantener coherencia con su perfil y las conversaciones previas
+
+El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comportarse naturalmente como si este fuera un nuevo día.`
+                            };
+
+                            // Add time gap message at the start, followed by previous messages
+                            setMessages([timeGapMessage, ...data.messages]);
+                            console.log(`Loaded ${data.messages.length} previous messages for ${patient.nombre} with ${daysElapsed} day(s) time gap`);
+                        } else {
+                            // Recent conversation, load normally
+                            setMessages(data.messages);
+                            console.log(`Loaded ${data.messages.length} previous messages for ${patient.nombre} (recent session)`);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Error loading previous interaction:", error);
+                // Don't show alert, just log - it's OK if there's no previous interaction
+            }
+        }
     };
 
     useEffect(() => {
@@ -689,7 +854,8 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
         setNewPatient({
             id: '', nombre: '', edad: '', tipo_trasplante: '', medicacion: '', adherencia_previa: '',
             contexto: '', nivel_educativo: '', estilo_comunicacion: '', fortalezas: '',
-            dificultades: '', notas_equipo: '', idiosincrasia: ''
+            dificultades: '', notas_equipo: '', idiosincrasia: '',
+            preferred_patient_model: '', last_interaction_file: ''
         });
         setShowPatientForm(true);
     };
@@ -728,6 +894,15 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
 
             if (res.ok) {
                 const data = await res.json();
+
+                // Update the patient's last_interaction_file
+                const updatedPatient = { ...patient, last_interaction_file: data.filename };
+                const updatedPatients = patients.map(p =>
+                    p.id === patient.id ? updatedPatient : p
+                );
+                setPatients(updatedPatients);
+                await savePatientsToBackend(updatedPatients);
+
                 setNotification(`¡Interacción generada exitosamente! Guardada como ${data.filename}`);
                 setTimeout(() => setNotification(null), 10000);
                 // Refresh interactions list if we are in history view, or just fetch them now
@@ -1158,7 +1333,16 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                             <tbody>
                                 {patients.map(p => (
                                     <tr key={p.id} className={selectedPatientId === p.id ? 'selected-patient' : ''}>
-                                        <td>{p.nombre}</td>
+                                        <td>
+                                            {p.nombre}
+                                            {p.last_interaction_file && (
+                                                <MessageSquare
+                                                    size={14}
+                                                    style={{ marginLeft: '0.5rem', color: '#6ee7b7', verticalAlign: 'middle' }}
+                                                    title="Tiene historial previo"
+                                                />
+                                            )}
+                                        </td>
                                         <td>{p.edad}</td>
                                         <td>{p.medicacion}</td>
                                         <td className="actions-cell">
@@ -1270,6 +1454,19 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                                             <label>Idiosincrasia</label>
                                             <textarea value={newPatient.idiosincrasia} onChange={e => setNewPatient({ ...newPatient, idiosincrasia: e.target.value })} />
                                         </div>
+                                        <div className="form-group">
+                                            <label>Modelo Preferido (Paciente)</label>
+                                            <select
+                                                value={newPatient.preferred_patient_model || ''}
+                                                onChange={e => setNewPatient({ ...newPatient, preferred_patient_model: e.target.value })}
+                                            >
+                                                <option value="">Usar configuración global</option>
+                                                {models.map(m => <option key={m} value={m}>{m}</option>)}
+                                            </select>
+                                            <small style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.25rem', display: 'block' }}>
+                                                Si no se selecciona, se usará el modelo configurado globalmente.
+                                            </small>
+                                        </div>
                                     </div>
                                     <div className="modal-actions">
                                         <button type="button" className="btn-secondary" onClick={() => { setProfileGuidance(''); setShowProfileGuidanceModal(true); }} disabled={generatingProfile}>
@@ -1354,6 +1551,61 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         </div>
                     </div>
                 )}
+
+                {/* New Day Situation Modal - KEEP IN SETUP VIEW FOR CONSISTENCY */}
+                {showNewDayModal && (
+                    <div className="modal-overlay" style={{ display: 'flex', zIndex: 99999, background: 'rgba(0,0,0,0.8)' }}>
+                        <div className="modal-content" style={{ maxWidth: '500px' }}>
+                            <div className="modal-header">
+                                <h3>⏰ Simular Nuevo Día</h3>
+                                <button className="btn-close" onClick={() => setShowNewDayModal(false)}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="modal-body">
+                                <p style={{ marginBottom: '1rem', color: '#94a3b8' }}>
+                                    Describe qué situación específica le ocurrió al paciente durante este día
+                                    (ej: "Olvidó tomar la medicación porque tuvo una visita familiar", "Tuvo náuseas después de tomar las pastillas").
+                                </p>
+                                <p style={{ marginBottom: '1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
+                                    <strong>Nota:</strong> Si dejas el campo vacío, el paciente mencionará situaciones generales relacionadas con su perfil.
+                                </p>
+                                <textarea
+                                    value={newDaySituation}
+                                    onChange={(e) => setNewDaySituation(e.target.value)}
+                                    placeholder="Ej: Tuvo dolor de cabeza y olvidó tomar las pastillas del mediodía..."
+                                    rows={5}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.75rem',
+                                        borderRadius: '0.5rem',
+                                        border: '1px solid #444',
+                                        background: '#1a1a1a',
+                                        color: '#fff',
+                                        fontSize: '0.95rem',
+                                        resize: 'vertical'
+                                    }}
+                                />
+                            </div>
+                            <div className="modal-actions">
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setShowNewDayModal(false)}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    onClick={applyNewDay}
+                                >
+                                    <Clock size={16} style={{ marginRight: '0.5rem' }} />
+                                    Aplicar Nuevo Día
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
 
                 {/* Auto Chat Modal */}
                 {pendingAutoChatPatient && (
@@ -2120,9 +2372,22 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         </span>
                     )}
                 </div>
-                <button className="btn-icon" onClick={endSession}>
-                    <X size={24} />
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {!soloMode && config.patient_name && (
+                        <button
+                            className="btn-secondary btn-sm"
+                            onClick={simulateNewDay}
+                            title="Simular paso de 1 día"
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        >
+                            <Clock size={16} />
+                            Nuevo Día
+                        </button>
+                    )}
+                    <button className="btn-icon" onClick={endSession}>
+                        <X size={24} />
+                    </button>
+                </div>
             </header>
 
 
@@ -2134,10 +2399,14 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         <p>Escribe un mensaje para comenzar la simulación de terapia.</p>
                     </div>
                 ) : (
-                    messages.map((msg, idx) => (
+                    messages.filter(msg => msg.role !== 'system').map((msg, idx) => (
                         <div key={idx} className={`message-row ${msg.role}`}>
                             <div className="avatar">
-                                {msg.role === 'user' ? (
+                                {msg.role === 'episode' ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', height: '40px', borderRadius: '50%', background: '#6ee7b7', color: '#0f172a' }}>
+                                        <Clock size={20} />
+                                    </div>
+                                ) : msg.role === 'user' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                         <User size={20} />
                                         {config.patient_name && (
@@ -2193,6 +2462,18 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                         placeholder="Escribe tu mensaje..."
                         disabled={loading}
                     />
+                    {!soloMode && (
+                        <button
+                            type="button"
+                            onClick={generateSuggestion}
+                            disabled={loading}
+                            title="Generar Sugerencia del Paciente"
+                            className="btn-secondary"
+                            style={{ minWidth: 'auto' }}
+                        >
+                            <BrainCircuit size={20} />
+                        </button>
+                    )}
                     <button type="submit" disabled={loading || !input.trim()}>
                         <Send size={20} />
                     </button>
@@ -2201,6 +2482,60 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                     </button>
                 </form>
             </div>
+
+            {/* New Day Situation Modal - IN CHAT VIEW */}
+            {showNewDayModal && (
+                <div className="modal-overlay" style={{ display: 'flex', zIndex: 99999, background: 'rgba(0,0,0,0.8)' }}>
+                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                        <div className="modal-header">
+                            <h3>⏰ Simular Nuevo Día</h3>
+                            <button className="btn-close" onClick={() => setShowNewDayModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <p style={{ marginBottom: '1rem', color: '#94a3b8' }}>
+                                Describe qué situación específica le ocurrió al paciente durante este día
+                                (ej: "Olvidó tomar la medicación porque tuvo una visita familiar", "Tuvo náuseas después de tomar las pastillas").
+                            </p>
+                            <p style={{ marginBottom: '1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
+                                <strong>Nota:</strong> Si dejas el campo vacío, el paciente mencionará situaciones generales relacionadas con su perfil.
+                            </p>
+                            <textarea
+                                value={newDaySituation}
+                                onChange={(e) => setNewDaySituation(e.target.value)}
+                                placeholder="Ej: Tuvo dolor de cabeza y olvidó tomar las pastillas del mediodía..."
+                                rows={5}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem',
+                                    borderRadius: '0.5rem',
+                                    border: '1px solid #444',
+                                    background: '#1a1a1a',
+                                    color: '#fff',
+                                    fontSize: '0.95rem',
+                                    resize: 'vertical'
+                                }}
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button
+                                className="btn-secondary"
+                                onClick={() => setShowNewDayModal(false)}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                className="btn-primary"
+                                onClick={applyNewDay}
+                            >
+                                <Clock size={16} style={{ marginRight: '0.5rem' }} />
+                                Aplicar Nuevo Día
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

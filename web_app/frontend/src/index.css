@@ -1020,4 +1020,22 @@ input:not([type="checkbox"]):not([type="radio"]):active {
   50% {
     opacity: 1;
   }
+}/* Episode messages - time gaps with specific situations */
+.message-row.episode {
+    justify-content: center;
+    margin: 1.5rem 0;
+}
+
+.message-row.episode .message-content {
+    max-width: 80%;
+    text-align: center;
+}
+
+.message-row.episode .text {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border: 2px solid #6ee7b7;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    font-style: italic;
+    padding: 1rem 1.5rem;
 }

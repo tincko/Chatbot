@@ -124,7 +124,10 @@ class DualLLMOrchestrator:
         recent_history = history[-6:] if len(history) > 6 else history
         
         for msg in recent_history:
-            if msg['role'] == 'user':
+            if msg['role'] == 'system':
+                # System messages (including episode instructions) should be preserved
+                messages.append({"role": "system", "content": msg['content']})
+            elif msg['role'] == 'user':
                 # This was said by the Patient (us)
                 messages.append({"role": "assistant", "content": msg['content']})
             elif msg['role'] == 'assistant':
@@ -136,6 +139,12 @@ class DualLLMOrchestrator:
 
         print(f"--- Calling Patient Helper ({patient_model}) ---")
         print(f"System Prompt: {actual_prompt[:100]}...")
+        print(f"\n=== DEBUG: FULL MESSAGES ARRAY BEING SENT TO LLM ===")
+        for i, msg in enumerate(messages):
+            print(f"Message {i}: role={msg['role']}, content={msg['content'][:100]}...")
+        print(f"=== END DEBUG ===\n")
+        import sys
+        sys.stdout.flush()  # Force output to appear immediately
 
         return self._call_llm(
             patient_model, 
@@ -224,6 +233,28 @@ class DualLLMOrchestrator:
             presence_penalty=presence_penalty,
             frequency_penalty=frequency_penalty
         ))
+
+        # Check if there's an episode in the history that should be mentioned
+        import re
+        for msg in reversed(history):
+            if msg.get('role') == 'system' and 'EVENTO QUE TE OCURRIÓ' in msg.get('content', ''):
+                # Extract the event text from the system message
+                content = msg.get('content', '')
+                # Look for the event in quotes
+                match = re.search(r'"([^"]+)"', content)
+                if match:
+                    event_text = match.group(1)
+                    # Inject it at the start of the suggestion if not already mentioned
+                    if event_text.lower() not in suggested_reply.lower():
+                        # Find a natural greeting and inject after it
+                        greeting_match = re.match(r'(Hola[^.!?]*[.!?]\s*)', suggested_reply, re.IGNORECASE)
+                        if greeting_match:
+                            greeting = greeting_match.group(1)
+                            rest = suggested_reply[len(greeting):]
+                            suggested_reply = f"{greeting}Mire doctor, {event_text.lower()}. {rest}"
+                        else:
+                            suggested_reply = f"Hola doctor. Mire, {event_text.lower()}. {suggested_reply}"
+                    break
 
         return suggested_reply
 

@@ -12,7 +12,8 @@
     "fortalezas": "Buena actitud hacia el equipo médico, acepta ayuda.",
     "dificultades": "Baja alfabetización en salud; olvida pastillas si está solo.",
     "notas_equipo": "Evitar lenguaje técnico; reforzar señales visuales.",
-    "idiosincrasia": "Debe adaptarse a los estandares de la idiosincrasia uruguaya."
+    "idiosincrasia": "Debe adaptarse a los estandares de la idiosincrasia uruguaya.",
+    "last_interaction_file": "interaction_2025-12-05T01-37-02-344Z.json"
   },
   {
     "nombre": "Juan Carlos Gómez",
@@ -57,7 +58,8 @@
     "dificultades": "Dificultad para recordar horarios precisos de medicación sin un recordatorio digital; ansiedad relacionada con la posibilidad de rechazo del órgano y preocupaciones por el futuro financiero del cuidado médico.",
     "notas_equipo": "Se sugiere implementar alarmas en smartphone y una caja organizadora de medicamentos. Se recomienda seguimiento psicológico trimestral para manejo de ansiedad, además de reforzar educación sobre signos tempranos de rechazo.",
     "idiosincrasia": "Valora la familia como pilar central; practica la oración diaria como fuente de consuelo; es partidaria del uso tradicional de remedios herbales, por lo que se debe dialogar sobre posibles interacciones con su medicación.",
-    "id": "1764548353424"
+    "id": "1764548353424",
+    "last_interaction_file": "interaction_2025-12-05T00-13-29-778Z.json"
   },
   {
     "nombre": "María Fernanda Torres",
