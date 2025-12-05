@@ -234,8 +234,25 @@ class DualLLMOrchestrator:
             frequency_penalty=frequency_penalty
         ))
 
-        # Check if there's an episode in the history that should be mentioned
+        # Clean any exposed instructions from the response
         import re
+        
+        # Remove common patterns where LLM exposes instructions
+        patterns_to_remove = [
+            r'We must obey instructions:.*?(?=\n|$)',
+            r'INSTRUCCIÓN.*?(?=\n|$)',
+            r'First line must.*?(?=\n|$)',
+            r'And keep under.*?(?=\n|$)',
+            r'\[.*?event.*?\].*?(?=\n|$)',
+        ]
+        
+        for pattern in patterns_to_remove:
+            suggested_reply = re.sub(pattern, '', suggested_reply, flags=re.IGNORECASE)
+        
+        # Clean up any remaining artifacts
+        suggested_reply = suggested_reply.strip()
+
+        # Check if there's an episode in the history that should be mentioned
         for msg in reversed(history):
             if msg.get('role') == 'system' and 'EVENTO QUE TE OCURRIÓ' in msg.get('content', ''):
                 # Extract the event text from the system message

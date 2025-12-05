@@ -88,14 +88,14 @@ function App() {
         psychologist_temperature: 0.7,
         psychologist_top_p: 0.9,
         psychologist_top_k: 40,
-        psychologist_max_tokens: 150,
+        psychologist_max_tokens: 600,  // Increased from 150 to allow complete responses
         psychologist_presence_penalty: 0.1,
         psychologist_frequency_penalty: 0.2,
         // Patient params
         patient_temperature: 0.7,
         patient_top_p: 0.9,
         patient_top_k: 40,
-        patient_max_tokens: 150,
+        patient_max_tokens: 400,  // Increased from 150 to allow complete responses
         patient_presence_penalty: 0.1,
         patient_frequency_penalty: 0.2,
         // RAG params

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -9,6 +9,13 @@ import re
 from datetime import datetime
 from orchestrator import DualLLMOrchestrator
 from rag_manager import RAGManager
+
+from sqlalchemy.orm import Session
+from database import get_db, init_db
+import db_helpers
+
+# Initialize database on startup
+init_db()
 
 app = FastAPI()
 
@@ -139,21 +146,20 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PATIENTS_FILE = os.path.join(BASE_DIR, "patients.json")
 
 @app.get("/api/patients")
-def get_patients():
-    if os.path.exists(PATIENTS_FILE):
-        try:
-            with open(PATIENTS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error reading patients file: {e}")
-            return []
+def get_patients(db: Session = Depends(get_db)):
+    """Get all patients from database"""
+    try:
+        return db_helpers.get_all_patients(db)
+    except Exception as e:
+        print(f"Error reading patients: {e}")
+        return []
     return []
 
 @app.post("/api/patients")
-def save_patients(patients: List[Dict[str, Any]]):
+def save_patients(patients: List[Dict[str, Any]], db: Session = Depends(get_db)):
+    """Save/update patients in database"""
     try:
-        with open(PATIENTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(patients, f, indent=2, ensure_ascii=False)
+        db_helpers.create_or_update_patients(db, patients)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -207,93 +213,33 @@ class SaveInteractionRequest(BaseModel):
     messages: List[Dict[str, Any]]
 
 @app.post("/api/save_interaction")
-def save_interaction(data: SaveInteractionRequest):
+def save_interaction(data: SaveInteractionRequest, db: Session = Depends(get_db)):
+    """Save interaction to database"""
     try:
-        # Create a filename based on the timestamp
-        filename = f"interaction_{data.timestamp.replace(':', '-').replace('.', '-')}.json"
-        filepath = os.path.join(DIALOGOS_DIR, filename)
-        
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data.dict(), f, indent=2, ensure_ascii=False)
-            
-        return {"status": "success", "filename": filename}
+        result = db_helpers.save_interaction(db, data.dict())
+        return result
     except Exception as e:
         print(f"Error saving interaction: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/interactions")
-def get_interactions():
-    interactions = []
-    if os.path.exists(DIALOGOS_DIR):
-        files = [f for f in os.listdir(DIALOGOS_DIR) if f.endswith('.json')]
-        files.sort(reverse=True) # Newest first
-        
-        # import re # Local import to avoid changing top of file - now global
-        
-        for filename in files:
-            try:
-                filepath = os.path.join(DIALOGOS_DIR, filename)
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    
-                    config = data.get('config', {})
-                    timestamp = data.get('timestamp', '')
-                    
-                    # Fix for old timestamp format (YYYY-MM-DD_HH-MM-SS) to ISO
-                    try:
-                        if "_" in timestamp and "T" not in timestamp:
-                            dt = datetime.strptime(timestamp, "%Y-%m-%d_%H-%M-%S")
-                            timestamp = dt.isoformat()
-                    except Exception:
-                        pass
-                    
-                    # Try to extract patient name
-                    patient_name = "Desconocido"
-                    patient_prompt = config.get('patient_system_prompt', '')
-                    if patient_prompt:
-                        # Look for "Sos el PACIENTE: {name}" with various terminators
-                        match = re.search(r"Sos el PACIENTE[:\s]+(.*?)(?:,|\.|;|\n|$)", patient_prompt, re.IGNORECASE)
-                        if match:
-                            patient_name = match.group(1).strip()
-                        else:
-                            # Fallback: try to find just the name line
-                            first_line = patient_prompt.split('\\n')[0]
-                            if "Sos el PACIENTE" in first_line:
-                                patient_name = first_line.replace("Sos el PACIENTE", "").replace(":", "").strip().split(',')[0].strip()
-
-                    interactions.append({
-                        "filename": filename,
-                        "timestamp": timestamp,
-                        "chatbot_model": config.get('chatbot_model', 'N/A'),
-                        "patient_model": config.get('patient_model', 'N/A'),
-                        "patient_name": patient_name
-                    })
-            except Exception as e:
-                print(f"Error reading {filename}: {e}")
-                continue
-                
-    return interactions
+def get_interactions(db: Session = Depends(get_db)):
+    """Get all interactions from database"""
+    return db_helpers.get_all_interactions(db)
 
 @app.get("/api/interactions/{filename}")
-def get_interaction_detail(filename: str):
-    filepath = os.path.join(DIALOGOS_DIR, filename)
-    if not os.path.exists(filepath):
+def get_interaction_detail(filename: str, db: Session = Depends(get_db)):
+    """Get interaction details from database"""
+    interaction = db_helpers.get_interaction_by_filename(db, filename)
+    if not interaction:
         raise HTTPException(status_code=404, detail="Interaction not found")
-    
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return interaction
 
 @app.delete("/api/interactions/{filename}")
-def delete_interaction(filename: str):
-    filepath = os.path.join(DIALOGOS_DIR, filename)
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="Interaction not found")
-    
+def delete_interaction(filename: str, db: Session = Depends(get_db)):
+    """Delete interaction from database"""
     try:
-        os.remove(filepath)
+        db_helpers.delete_interaction_by_filename(db, filename)
         return {"status": "success", "message": "Interaction deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
