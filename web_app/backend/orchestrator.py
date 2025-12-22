@@ -51,6 +51,11 @@ class DualLLMOrchestrator:
         # 1. Remove standard <think> blocks (closed and unclosed)
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
         text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL)
+        # Handle case where model starts directly with thinking but forgets opening tag
+        # We look for a closing </think> and assume everything before it is thought if it looks like one.
+        # But to be safe, we only do this if we see a </think> but no <think>
+        if "</think>" in text and "<think>" not in text:
+             text = re.sub(r"^.*?</think>", "", text, flags=re.DOTALL)
         
         # 2. Remove other common reasoning markers used by various models
         # e.g. <|thought|>, <reasoning>, etc.
@@ -96,21 +101,21 @@ class DualLLMOrchestrator:
             "HABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\n"
             "Respondés como un paciente real, contando emociones, dificultades y sensaciones.\n"
             "Nunca digas que sos un modelo de lenguaje ni un asistente.\n\n"
-            "Tu tarea principal es responder a lo que te diga tu médico o psicólogo sobre:\n"
+            "Tu tarea principal es responder a lo que te diga tu médico o asistente en salud renal sobre:\n"
             "- cómo te sentís,\n"
             "- qué te pasa con la medicación,\n"
             "- qué dificultades tenés para tomarla a horario,\n"
             "- qué cosas te ayudan o te traban en el día a día.\n\n"
             "SOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n"
             "- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n"
-            "- No te despidas enseguida salvo que el mensaje del psicólogo cierre claramente la conversación.\n"
+            "- No te despidas enseguida salvo que el mensaje del asistente en salud renal cierre claramente la conversación.\n"
             "- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), "
             "a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES "
             "decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\n"
             "SOBRE EL PASO DE LOS DÍAS:\n"
             "- Si en algún momento te despedís y luego la conversación continúa más adelante, "
             "actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n"
-            "- En ese 'nuevo día', saludá de nuevo al psicólogo (por ejemplo: 'hola, buen día doctor…').\n"
+            "- En ese 'nuevo día', saludá de nuevo al asistente en salud renal (por ejemplo: 'hola, buen día doctor…').\n"
             "- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, "
             "si te olvidaste, si surgió algún problema nuevo, etc.\n"
             "- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes."
@@ -120,22 +125,58 @@ class DualLLMOrchestrator:
 
         messages = [{"role": "system", "content": actual_prompt}]
         
-        # Add recent history (limit to last 6 messages to avoid context overflow)
-        recent_history = history[-6:] if len(history) > 6 else history
+        # Separate system messages (instructions/alerts) from conversation history
+        system_msgs_in_history = [m for m in history if m.get('role') == 'system']
+        conversation_msgs = [m for m in history if m.get('role') != 'system']
         
-        for msg in recent_history:
-            if msg['role'] == 'system':
-                # System messages (including episode instructions) should be preserved
-                messages.append({"role": "system", "content": msg['content']})
-            elif msg['role'] == 'user':
-                # This was said by the Patient (us)
+        # Limit conversation history to last 6 messages
+        recent_conversation = conversation_msgs[-6:] if len(conversation_msgs) > 6 else conversation_msgs
+        
+        # Reconstruct history: System prompts first, then conversation
+        # Note: We process them to invert roles as needed
+        
+        # 1. Add preserved system messages (e.g. "EVENTO QUE TE OCURRIÓ")
+        # Optimization: Only keep the most recent "New Day" event to avoid confusion
+        final_system_msgs = []
+        new_day_msgs = [m for m in system_msgs_in_history if "NUEVO DÍA" in m.get('content', '').upper() or "EVENTO QUE TE OCURRIÓ" in m.get('content', '').upper()]
+        other_system_msgs = [m for m in system_msgs_in_history if m not in new_day_msgs]
+        
+        # Add non-event system messages
+        final_system_msgs.extend(other_system_msgs)
+        
+        # Add ONLY the last event message if any exist
+        if new_day_msgs:
+            final_system_msgs.append(new_day_msgs[-1])
+            # EXTRACT STRONG REMINDER: If there is a new day event, we must ensure the model prioritizes it.
+            # We append a specific reinforcement instruction at the very end of the conversation.
+            latest_event_content = new_day_msgs[-1]['content']
+            reminder_msg = {
+                "role": "system", 
+                "content": f"RECORDATORIO IMPORTANTE PARA TU RESPUESTA:\nTen muito en cuenta este evento reciente: {latest_event_content}\nSi el médico no lo mencionó, busca la forma de introducirlo o tenlo presente en tu estado de ánimo."
+            }
+            # We will append this AFTER constructing the full message list below
+            
+        for msg in final_system_msgs:
+            messages.append({"role": "system", "content": msg['content']})
+            
+        # 2. Add recent conversation with inverted roles
+        for msg in recent_conversation:
+            if msg['role'] == 'user':
+                # This was said by the Patient (us) -> becomes Assistant for the model
                 messages.append({"role": "assistant", "content": msg['content']})
             elif msg['role'] == 'assistant':
-                # This was said by the Psychologist (them)
+                # This was said by the Psychologist (them) -> becomes User for the model
                 messages.append({"role": "user", "content": msg['content']})
         
         # Add the psychologist's latest message as the latest input from the 'user' (interlocutor)
         messages.append({"role": "user", "content": psychologist_message})
+        
+        # 3. APPEND REMINDER IF EXISTS (to force attention)
+        if new_day_msgs:
+             messages.append({
+                "role": "system", 
+                "content": f"(Instrucción oculta de consistencia): Recuerda actuar según el evento reciente: '{latest_event_content}'. No lo ignores."
+            })
 
         print(f"--- Calling Patient Helper ({patient_model}) ---")
         print(f"System Prompt: {actual_prompt[:100]}...")
@@ -163,7 +204,7 @@ class DualLLMOrchestrator:
         """
         default_psico_prompt = (
             "Sos un asistente especializado en salud conductual y trasplante renal.\n"
-            "Actuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\n"
+            "Actuás como un asistente en salud renal que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\n"
             "Tu tarea en cada turno es:\n"
             "1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n"
             "2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\n"
@@ -251,27 +292,6 @@ class DualLLMOrchestrator:
         
         # Clean up any remaining artifacts
         suggested_reply = suggested_reply.strip()
-
-        # Check if there's an episode in the history that should be mentioned
-        for msg in reversed(history):
-            if msg.get('role') == 'system' and 'EVENTO QUE TE OCURRIÓ' in msg.get('content', ''):
-                # Extract the event text from the system message
-                content = msg.get('content', '')
-                # Look for the event in quotes
-                match = re.search(r'"([^"]+)"', content)
-                if match:
-                    event_text = match.group(1)
-                    # Inject it at the start of the suggestion if not already mentioned
-                    if event_text.lower() not in suggested_reply.lower():
-                        # Find a natural greeting and inject after it
-                        greeting_match = re.match(r'(Hola[^.!?]*[.!?]\s*)', suggested_reply, re.IGNORECASE)
-                        if greeting_match:
-                            greeting = greeting_match.group(1)
-                            rest = suggested_reply[len(greeting):]
-                            suggested_reply = f"{greeting}Mire doctor, {event_text.lower()}. {rest}"
-                        else:
-                            suggested_reply = f"Hola doctor. Mire, {event_text.lower()}. {suggested_reply}"
-                    break
 
         return suggested_reply
 
@@ -409,7 +429,7 @@ class DualLLMOrchestrator:
             system_prompt = (
                 "Sos un supervisor clínico experto en trasplante renal y salud conductual.\n"
                 "Tu tarea es analizar las transcripciones de sesiones simuladas entre un Psicólogo (IA) y un Paciente (IA).\n"
-                "Debes evaluar la calidad de la intervención del psicólogo, la coherencia del paciente y el progreso general.\n\n"
+                "Debes evaluar la calidad de la intervención del asistente en salud renal, la coherencia del paciente y el progreso general.\n\n"
                 "Estructura tu análisis en los siguientes puntos:\n"
                 "1. RESUMEN GENERAL: Breve descripción de los temas tratados.\n"
                 "2. EVALUACIÓN DEL PSICÓLOGO: ¿Fue empático? ¿Usó estrategias claras? ¿Respetó el modelo COM-B?\n"
@@ -475,7 +495,7 @@ class DualLLMOrchestrator:
         # Let's have a standard greeting to kick it off, but NOT add it to history yet if we want the patient to 'start' real talk.
         # Actually, let's assume the session starts with the Psychologist saying hello.
         
-        last_psychologist_msg = "Hola. Soy tu psicólogo virtual. ¿Cómo te sentís hoy?"
+        last_psychologist_msg = "Hola. Soy tu asistente en salud renal virtual. ¿Cómo te sentís hoy?"
         messages_log.append({"role": "assistant", "content": last_psychologist_msg})
         
         print(f"--- Starting Simulation ({turns} turns) ---")

@@ -354,7 +354,7 @@ def reindex_documents(req: ReindexRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate_interaction")
-def generate_interaction(req: GenerateInteractionRequest):
+def generate_interaction(req: GenerateInteractionRequest, db: Session = Depends(get_db)):
     try:
         print(f"Received interaction generation request for patient: {req.patient_profile.get('nombre')} with {req.turns} turns.")
         messages = orchestrator.simulate_interaction(
@@ -375,7 +375,11 @@ def generate_interaction(req: GenerateInteractionRequest):
         # Sanitize filename: remove invalid chars for Windows/Linux filesystems
         patient_name = re.sub(r'[<>:"/\\|?*]', '', patient_name).strip().replace(" ", "_")
         filename = f"auto_{patient_name}_{timestamp_safe}.json"
-        filepath = os.path.join(DIALOGOS_DIR, filename)
+        
+        # We don't necessarily need to save to file anymore if we have DB, but keeping it for backup/debug is fine. 
+        # Or we can rely on save_interaction to generate the filename and we just use that.
+        # However, db_helpers.save_interaction generates its own filename based on timestamp. 
+        # To reuse the logic and keep consistency, let's construct the data object and pass it to db_helpers.
         
         data = {
             "timestamp": timestamp_iso,
@@ -385,15 +389,26 @@ def generate_interaction(req: GenerateInteractionRequest):
                 "psychologist_system_prompt": req.psychologist_system_prompt,
                 "patient_system_prompt": req.patient_system_prompt,
                 "patient_name": req.patient_profile.get('nombre', 'Unknown'),
-                "mode": "autonomous"
+                "mode": "autonomous",
+                # Pass params so they get saved to DB columns too
+                "psychologist_temperature": req.psychologist_temperature,
+                "patient_temperature": req.patient_temperature,
             },
             "messages": messages
         }
         
+        # Save to DB
+        # This will create a filename like interaction_TIMESTAMP.json in the DB record
+        # and return it.
+        result = db_helpers.save_interaction(db, data)
+        saved_filename = result['filename']
+
+        # OPTIONAL: Save to file system as well using the SAME filename from DB to match
+        filepath = os.path.join(DIALOGOS_DIR, saved_filename)
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
             
-        return {"status": "success", "filename": filename, "messages": messages}
+        return {"status": "success", "filename": saved_filename, "messages": messages}
         
     except Exception as e:
         print(f"Error generating interaction: {e}")
@@ -408,30 +423,59 @@ def analyze_interactions_endpoint(req: AnalyzeRequest, db: Session = Depends(get
         patient_prompts = set()
         
         # Get interactions from database
-        interactions = db_helpers.get_interactions_by_filenames(db, req.filenames)
+        # Try to find in DB first
+        db_interactions = db_helpers.get_interactions_by_filenames(db, req.filenames)
         
-        for data in interactions:
-            # Extract relevant info for analysis
-            timestamp = data.get('timestamp', 'Unknown Date')
-            config = data.get('config', {})
+        # Helper to find interaction in DB list
+        def find_in_db(fname):
+            for i in db_interactions:
+                if i.get('filename') == fname:
+                    return i
+            return None
+
+        print(f"DEBUG: Processing {len(req.filenames)} filenames: {req.filenames}")
+        
+        for fname in req.filenames:
+            data = find_in_db(fname)
             
-            if 'patient_model' in config:
-                patient_models.add(config['patient_model'])
-            if 'patient_system_prompt' in config:
-                patient_prompts.add(config['patient_system_prompt'])
-            messages = data.get('messages', [])
+            # Fallback: If not in DB, try loading from disk (JSON file)
+            if not data:
+                fpath = os.path.join(DIALOGOS_DIR, fname)
+                print(f"DEBUG: Checking disk for {fname} at {fpath}")
+                if os.path.exists(fpath):
+                    try:
+                        with open(fpath, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            print(f"DEBUG: Found {fname} on disk.")
+                    except Exception as e:
+                        print(f"Error reading interaction file {fname}: {e}")
+                else:
+                    print(f"DEBUG: {fname} NOT FOUND on disk.")
             
-            # Extract patient name from config
-            patient_name = config.get('patient_name', 'Unknown Patient')
-            
-            # Format conversation
-            conversation_text = f"--- Interaction Date: {timestamp} | Patient: {patient_name} ---\n"
-            for msg in messages:
-                role = msg.get('role', 'unknown')
-                content = msg.get('content', '')
-                conversation_text += f"{role.upper()}: {content}\n"
-            
-            interactions_content.append(conversation_text)
+            if data:
+                # Extract relevant info for analysis
+                timestamp = data.get('timestamp', 'Unknown Date')
+                config = data.get('config', {})
+                
+                if 'patient_model' in config:
+                    patient_models.add(config['patient_model'])
+                if 'patient_system_prompt' in config:
+                    patient_prompts.add(config['patient_system_prompt'])
+                messages = data.get('messages', [])
+                
+                # Extract patient name from config
+                patient_name = config.get('patient_name', 'Unknown Patient')
+                
+                # Format conversation
+                conversation_text = f"--- Interaction Date: {timestamp} | Patient: {patient_name} ---\n"
+                for msg in messages:
+                    role = msg.get('role', 'unknown')
+                    content = msg.get('content', '')
+                    conversation_text += f"{role.upper()}: {content}\n"
+                
+                interactions_content.append(conversation_text)
+            else:
+                 print(f"Warning: Interaction {fname} not found in DB or disk.")
         
         if not interactions_content and not req.document_filenames: # Modified condition
             return {"analysis": "No se encontraron interacciones o documentos válidos para analizar."}

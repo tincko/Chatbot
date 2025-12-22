@@ -4,9 +4,9 @@ import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
-const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un psicólogo que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\nTu tarea en cada turno es:\n1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\nINSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\nFORMATO DE SALIDA:\n<think>\n[Aquí tu análisis interno del modelo COM-B y estrategia]\n</think>\n[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\nESTILO DEL MENSAJE AL PACIENTE:\n- Usá un lenguaje cálido y cercano ('vos').\n- Frases cortas, sin tecnicismos ni jerga clínica.\n- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n- Tono de guía que acompaña, no de autoridad.\n\nEjemplo de salida ideal:\n<think>\nEl paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n</think>\nEntiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!";
+const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un asistente en salud renal que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\nTu tarea en cada turno es:\n1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\nINSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\nFORMATO DE SALIDA:\n<think>\n[Aquí tu análisis interno del modelo COM-B y estrategia]\n</think>\n[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\nESTILO DEL MENSAJE AL PACIENTE:\n- Usá un lenguaje cálido y cercano ('vos').\n- Frases cortas, sin tecnicismos ni jerga clínica.\n- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n- Tono de guía que acompaña, no de autoridad.\n\nEjemplo de salida ideal:\n<think>\nEl paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n</think>\nEntiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!";
 
-const DEFAULT_ANALYSIS_PROMPT = "Sos un supervisor clínico experto en trasplante renal y salud conductual.\nTu tarea es analizar las transcripciones de sesiones simuladas entre un Psicólogo (IA) y un Paciente (IA).\nDebes evaluar la calidad de la intervención del psicólogo, la coherencia del paciente y el progreso general.\n\nEstructura tu análisis en los siguientes puntos:\n1. RESUMEN GENERAL: Breve descripción de los temas tratados.\n2. EVALUACIÓN DEL PSICÓLOGO: ¿Fue empático? ¿Usó estrategias claras? ¿Respetó el modelo COM-B?\n3. EVALUACIÓN DEL PACIENTE: ¿Fue realista? ¿Mantuvo la coherencia con su perfil?\n4. CONCLUSIONES Y RECOMENDACIONES: ¿Qué se podría mejorar en el prompt o configuración?";
+const DEFAULT_ANALYSIS_PROMPT = "Sos un supervisor clínico experto en trasplante renal y salud conductual.\nTu tarea es analizar las transcripciones de sesiones simuladas entre un Asistente en salud renal (IA) y un Paciente (IA).\nDebes evaluar la calidad de la intervención del asistente en salud renal, la coherencia del paciente y el progreso general.\n\nEstructura tu análisis en los siguientes puntos:\n1. RESUMEN GENERAL: Breve descripción de los temas tratados.\n2. EVALUACIÓN DEL PSICÓLOGO: ¿Fue empático? ¿Usó estrategias claras? ¿Respetó el modelo COM-B?\n3. EVALUACIÓN DEL PACIENTE: ¿Fue realista? ¿Mantuvo la coherencia con su perfil?\n4. CONCLUSIONES Y RECOMENDACIONES: ¿Qué se podría mejorar en el prompt o configuración?";
 
 const DEFAULT_HISTORY_CHAT_PROMPT = "Sos un asistente experto que tiene acceso al historial de conversaciones de terapia simulada.\nTu objetivo es responder preguntas del usuario sobre estas conversaciones, buscando patrones, detalles específicos o resumiendo información.\nUsa el contexto proporcionado para fundamentar tus respuestas.";
 
@@ -83,7 +83,7 @@ function App() {
         chatbot_model: 'mental_llama3.1-8b-mix-sft',
         patient_model: 'mental_llama3.1-8b-mix-sft',
         psychologist_system_prompt: DEFAULT_PSYCHOLOGIST_PROMPT,
-        patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu médico o psicólogo sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del psicólogo cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al psicólogo (por ejemplo: 'hola, buen día doctor…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes.",
+        patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu médico o asistente en salud renal sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del asistente en salud renal cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al asistente en salud renal (por ejemplo: 'hola, buen día doctor…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes.",
         // Psychologist params
         psychologist_temperature: 0.7,
         psychologist_top_p: 0.9,
@@ -214,10 +214,42 @@ function App() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        fetchModels();
-        fetchPatients();
-        fetchDocuments();
-        fetchDefaultPrompts();
+        const fetchAll = async () => {
+            await fetchModels();
+            await fetchPatients();
+            await fetchDocuments();
+            await fetchDefaultPrompts();
+        };
+
+        // Initial attempt
+        fetchAll();
+
+        // Retry mechanism: Check connection every 2s
+        const intervalId = setInterval(async () => {
+            try {
+                const res = await fetch('http://localhost:8000/api/models');
+                if (res.ok) {
+                    // Backend is ready!
+                    // We call fetchAll again to ensure all data is loaded properly
+                    // checking if we already have models to avoid unnecessary re-renders could be good, 
+                    // but calling fetchAll is safer to ensure we get everything.
+                    fetchAll();
+
+                    // Stop retrying once successful
+                    clearInterval(intervalId);
+                }
+            } catch (e) {
+                console.log("Waiting for backend...");
+            }
+        }, 2000);
+
+        // Stop trying after 60 seconds
+        const timeoutId = setTimeout(() => clearInterval(intervalId), 60000);
+
+        return () => {
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+        };
     }, []);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -267,7 +299,7 @@ function App() {
 
     const startSession = () => {
         if (!soloMode && !config.patient_name) {
-            alert("Por favor selecciona un perfil de paciente primero, o habilita el 'Modo Solitario' para chatear solo con el psicólogo.");
+            alert("Por favor selecciona un perfil de paciente primero, o habilita el 'Modo Solitario' para chatear solo con el asistente en salud renal.");
             return;
         }
         setView('chat');
@@ -487,7 +519,7 @@ EMPIEZA TU RESPUESTA MENCIONANDO ESTE EVENTO. ES OBLIGATORIO.`
             content: `Ha pasado un día completo desde la última conversación.
 
 Al continuar, el paciente debe:
-1. Saludar de nuevo al psicólogo (ej: "Hola doctor", "Buenos días", "¿Cómo está?")
+1. Saludar de nuevo al asistente en salud renal (ej: "Hola doctor", "Buenos días", "¿Cómo está?")
 2. Contar qué pasó con la medicación desde ayer:
    - Si siguió el consejo anterior
    - Si se olvidó de tomar alguna dosis
@@ -768,7 +800,7 @@ ${instructions}`;
         const prompt = generatePatientPrompt(patient);
 
         const patientContext = `
-INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
+INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Asistente en salud renal):
 - Nombre: ${patient.nombre}
 - Edad: ${patient.edad}
 - Tipo de trasplante: ${patient.tipo_trasplante}
@@ -814,7 +846,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Psicólogo):
                                 content: `Han pasado ${daysElapsed > 0 ? daysElapsed + ' día(s)' : 'varias horas'} desde la última conversación (${lastTimestamp.toLocaleDateString()}).
                                 
 Al comenzar esta nueva sesión, el paciente debe:
-1. Saludar de nuevo al psicólogo (ej: "Hola doctor", "Buenos días")
+1. Saludar de nuevo al asistente en salud renal (ej: "Hola doctor", "Buenos días")
 2. Contar brevemente qué pasó con la medicación en este tiempo:
    - Si siguió el consejo anterior
    - Si se olvidó de tomar alguna dosis
@@ -864,7 +896,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
         console.log("handleGenerateInteraction called for:", patient.nombre);
         if (!config.chatbot_model || !config.patient_model) {
             console.log("Missing models:", config);
-            alert("Por favor selecciona ambos modelos, Psicólogo y Paciente, en la configuración primero.");
+            alert("Por favor selecciona ambos modelos, Asistente en salud renal y Paciente, en la configuración primero.");
             return;
         }
         setPendingAutoChatPatient(patient);
@@ -995,7 +1027,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                     <h2>Configuración de Sesión</h2>
 
                     <div className="config-section">
-                        <h3>Psicólogo (Chatbot)</h3>
+                        <h3>Asistente en salud renal (Chatbot)</h3>
                         <div className="form-group">
                             <label>Modelo</label>
                             <select
@@ -1200,7 +1232,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                                 onChange={(e) => setSoloMode(e.target.checked)}
                                 style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                             />
-                            <span style={{ fontSize: '1rem', fontWeight: '500' }}>Modo Solitario (Solo Psicólogo)</span>
+                            <span style={{ fontSize: '1rem', fontWeight: '500' }}>Modo Solitario (Solo Asistente en salud renal)</span>
                         </label>
                     </div>
 
@@ -1794,6 +1826,70 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
         }
 
         setIsGeneratingPDF(true);
+
+        try {
+            const canvas = await html2canvas(element, {
+                scale: 2, // Retain quality but not too high
+                useCORS: true,
+                logging: false
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+
+            // Adjust width to fit page with some margin
+            const imgX = 10;
+            const imgY = 10;
+            const finalWidth = pdfWidth - 20;
+            const finalHeight = (imgHeight * finalWidth) / imgWidth;
+
+            // Handle multi-page if content is too long (basic implementation: just scale to fit or split)
+            // For now, let's just fit width and if it's too long, it will stretch or cut.
+            // A better approach for text is to use pdf.text but that loses formatting.
+            // Screenshot approach is best for preserving exact look.
+
+            // If height > page height, we need multiple pages.
+            let heightLeft = finalHeight;
+            let position = 0;
+            let pageHeight = pdfHeight - 20; // margins
+
+            // First page
+            pdf.addImage(imgData, 'PNG', imgX, imgY, finalWidth, Math.min(finalHeight, pageHeight));
+            heightLeft -= pageHeight;
+
+            while (heightLeft > 0) {
+                position = heightLeft - finalHeight; // Move up
+                pdf.addPage();
+                // We need to slice the image or just offset it. 
+                // Simple offset isn't supported perfectly by addImage for slicing source.
+                // So often people just add the whole image again with negative offset.
+                // However, simpler is just ONE LONG PAGE or just scaling to fit one page if user prefers summary.
+
+                // Let's stick to simple "Fit Width" for now. If it's very long, this simple logic might cut.
+                // To do it properly with pages is complex. 
+                // An alternative is just creating a very tall PDF page:
+                // pdf = new jsPDF('p', 'mm', [pdfWidth, finalHeight + 20]);
+
+                // Let's use the dynamic height approach to avoid cutting content!
+                break;
+            }
+
+            // Actually, let's just make the PDF page size dynamic to fit the content!
+            const dynamicPdf = new jsPDF('p', 'mm', [pdfWidth, Math.max(pdfHeight, finalHeight + 20)]);
+            dynamicPdf.addImage(imgData, 'PNG', 10, 10, finalWidth, finalHeight);
+            dynamicPdf.save('analisis_clinico.pdf');
+
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            alert("Error al generar el PDF.");
+        } finally {
+            setIsGeneratingPDF(false);
+        }
     };
 
     if (view === 'history') {
@@ -2058,7 +2154,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Modelo Psicólogo</label>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Modelo Asistente en salud renal</label>
                             <select
                                 value={filterChatbotModel}
                                 onChange={e => setFilterChatbotModel(e.target.value)}
