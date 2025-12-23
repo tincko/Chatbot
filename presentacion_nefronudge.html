@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentación NefroNudge</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f0f12;
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 40px;
+        }
+
+        .slide {
+            width: 1280px; /* 16:9 Aspect Ratio */
+            height: 720px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            position: relative;
+            overflow: hidden;
+            border-radius: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            page-break-after: always;
+        }
+
+        /* Decorative Background Elements */
+        .slide::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at center, rgba(110, 231, 183, 0.03) 0%, transparent 50%);
+            z-index: 0;
+        }
+
+        .content {
+            z-index: 10;
+            height: 100%;
+            width: 100%;
+            padding: 60px 80px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .brand-logo {
+            position: absolute;
+            top: 40px;
+            right: 50px;
+            font-weight: 800;
+            color: #6ee7b7;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            opacity: 0.5;
+        }
+
+        h1 {
+            font-size: 5rem;
+            margin: 0;
+            background: linear-gradient(to right, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        h2.subtitle {
+            font-size: 2rem;
+            color: #6ee7b7;
+            margin-top: 10px;
+            margin-bottom: 40px;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+        }
+
+        /* Slide 1 Specific Layout */
+        .split-layout {
+            display: flex;
+            gap: 60px;
+            flex: 1;
+            align-items: center;
+        }
+
+        .left-col {
+            flex: 1;
+        }
+
+        .phone-mockup {
+            width: 300px;
+            height: 600px;
+            border: 8px solid #334155;
+            border-radius: 30px;
+            background: #0f172a;
+            position: relative;
+            box-shadow: 0 0 40px rgba(110, 231, 183, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .mockup-screen {
+            font-size: 0.8rem;
+            text-align: center;
+            padding: 20px;
+            color: #94a3b8;
+        }
+
+        .mockup-screen span {
+            display: block;
+            margin-bottom: 20px;
+        }
+        
+        .avatar-circle {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #334155;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .right-col {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 25px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: transform 0.3s;
+        }
+
+        .glass-card:hover {
+            transform: translateX(10px);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(110, 231, 183, 0.3);
+        }
+
+        .icon-box {
+            width: 50px;
+            height: 50px;
+            background: rgba(110, 231, 183, 0.1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6ee7b7;
+            font-weight: bold;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .card-text h3 {
+            margin: 0 0 5px 0;
+            color: #f1f5f9;
+            font-size: 1.2rem;
+        }
+
+        .card-text p {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        /* Slide 2 Styling */
+        .slide-image-full {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Cover or contain depending on pref */
+            border-radius: 8px;
+        }
+
+        @media print {
+            body {
+                background: none;
+                padding: 0;
+            }
+            .slide {
+                box-shadow: none;
+                page-break-after: always;
+                border-radius: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- DIAPOSITIVA 1 -->
+    <div class="slide">
+        <div class="brand-logo">NefroNudge V1.0</div>
+        <div class="content">
+            <div class="split-layout">
+                <div class="left-col" style="padding-right: 20px; border-right: 1px solid rgba(255,255,255,0.1);">
+                    <h1>NefroNudge</h1>
+                    <h2 class="subtitle">Entrenamiento Dual-LLM para Salud Renal</h2>
+                    <p style="color: #cbd5e1; font-size: 1.1rem; line-height: 1.6; margin-bottom: 40px;">
+                        Una plataforma avanzada que simula pacientes realistas utilizando dos cerebros de IA (Dual-LLM) para entrenar a asistentes en el modelo conductual COM-B y mejorar la adherencia a la medicación.
+                    </p>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                         <div style="background: #6ee7b7; width: 40px; height: 4px; border-radius: 2px;"></div>
+                         <span style="color: #6ee7b7; font-weight: 600;">PLATAFORMA INTERACTIVA</span>
+                    </div>
+                </div>
+                
+                <div class="right-col">
+                    <div class="glass-card">
+                        <div class="icon-box">🧠</div>
+                        <div class="card-text">
+                            <h3>Simulación Hiper-Realista</h3>
+                            <p>Pacientes generados con IA con perfiles clínicos y sociales complejos, incluyendo edad, medicación y contexto familiar único.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card">
+                        <div class="icon-box">📊</div>
+                        <div class="card-text">
+                            <h3>Modelo Conductual COM-B</h3>
+                            <p>Entrenamiento enfocado en Capacidad, Oportunidad y Motivación para intervenciones efectivas.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card">
+                        <div class="icon-box">⚡</div>
+                        <div class="card-text">
+                            <h3>Micro-Nudges & Nuevo Día</h3>
+                            <p>Escenarios dinámicos donde "pasan los días", introduciendo variables reales como estrés, olvidos o eventos sociales.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DIAPOSITIVA 2 -->
+    <div class="slide">
+        <!-- Assuming the image is in the same folder -->
+        <img src="slide_2_tecnologia.png" class="slide-image-full" alt="Tecnología y Capacidades">
+    </div>
+
+</body>
+</html>

@@ -14,14 +14,14 @@ const DEFAULT_PATIENT_INSTRUCTIONS = `HABLÁS SIEMPRE en primera persona, como s
 Respondés contando emociones, dificultades y sensaciones reales.
 Nunca digas que sos un modelo de lenguaje.
 
-Tu tarea es responder a tu médico sobre:
+Tu tarea es responder a tu asistente sobre:
 - cómo te sentís,
 - qué te pasa con la medicación,
 - qué dificultades tenés para tomarla a horario.
 
 SOBRE LA DURACIÓN:
 - Sostené varias idas y vueltas.
-- Despedite solo si el médico cierra.
+- Despedite solo si el asistente cierra.
 
 SOBRE EL PASO DE LOS DÍAS:
 - Si la charla sigue otro día, actuá como si hubiera pasado un día entero.
@@ -83,7 +83,7 @@ function App() {
         chatbot_model: 'mental_llama3.1-8b-mix-sft',
         patient_model: 'mental_llama3.1-8b-mix-sft',
         psychologist_system_prompt: DEFAULT_PSYCHOLOGIST_PROMPT,
-        patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu médico o asistente en salud renal sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del asistente en salud renal cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al asistente en salud renal (por ejemplo: 'hola, buen día doctor…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes.",
+        patient_system_prompt: "Sos el PACIENTE, receptor de trasplante de riñón.\nHABLÁS SIEMPRE en primera persona, como si realmente fueras el paciente.\nRespondés como un paciente real, contando emociones, dificultades y sensaciones.\nNunca digas que sos un modelo de lenguaje ni un asistente.\n\nTu tarea principal es responder a lo que te diga tu asistente en salud renal sobre:\n- cómo te sentís,\n- qué te pasa con la medicación,\n- qué dificultades tenés para tomarla a horario,\n- qué cosas te ayudan o te traban en el día a día.\n\nSOBRE LA DURACIÓN DE LA CONVERSACIÓN:\n- En general, intentá sostener VARIAS idas y vueltas en el mismo día antes de despedirte.\n- No te despidas enseguida salvo que el mensaje del asistente en salud renal cierre claramente la conversación.\n- Tus despedidas pueden ser variadas: a veces solo agradecer ('gracias, me ayudó'), a veces mencionar que te sirve por ahora ('por ahora estoy bien, gracias'), y SOLO A VECES decir que hablan mañana u otro día. No repitas siempre 'hasta mañana'.\n\nSOBRE EL PASO DE LOS DÍAS:\n- Si en algún momento te despedís y luego la conversación continúa más adelante, actuá como si hubiera pasado UN DÍA ENTERO desde la última charla.\n- En ese 'nuevo día', saludá de nuevo al asistente en salud renal (por ejemplo: 'hola, buen día asistente…').\n- Contá brevemente qué pasó desde la última vez con la medicación: si pudiste seguir el consejo, si te olvidaste, si surgió algún problema nuevo, etc.\n- Esos eventos del nuevo día deben ser coherentes con tu perfil y con lo que hablaron antes.",
         // Psychologist params
         psychologist_temperature: 0.7,
         psychologist_top_p: 0.9,
@@ -443,32 +443,66 @@ function App() {
             // Filter system messages but convert episode to system
             let history = messages
                 .filter(m => m.role !== 'system')
-                .map(m => ({
-                    role: m.role === 'episode' ? 'system' : m.role,
-                    content: m.content
-                }));
+                .map(m => {
+                    // Handle episodes
+                    if (m.role === 'episode') {
+                        if (m === lastEpisode) {
+                            // This is the current active event. Keep as system but maybe enhance label?
+                            // formatting is handled by the injections, but keeping it here maintains timeline.
+                            return { role: 'system', content: `[EVENTO ACTUAL]: ${m.content}` };
+                        } else {
+                            // This is an OLD event. Mark it clearly so AI doesn't prioritize it.
+                            return { role: 'system', content: `[EVENTO HISTÓRICO - YA PASÓ]: ${m.content}` };
+                        }
+                    }
+                    return { role: m.role, content: m.content };
+                });
+
+            // Force strict role adherence to prevent "Assistant-like" intros
+            history.push({
+                role: 'system',
+                content: `ROL ACTUAL: Eres el PACIENTE.
+TU OBJETIVO: Responder al Asistente.
+PROHIBIDO: Actuar como el asistente, validar al asistente ("Me alegra que..."), o dar consejos.
+INSTRUCCIÓN: Responde directamente en primera persona desde tu perspectiva de paciente.`
+            });
 
             // If there's a recent episode, add instruction at THE BEGINNING for maximum priority
             if (lastEpisode) {
                 // Extract the actual event text (remove decorative part)
                 const eventText = lastEpisode.content.replace(/📅\s*\*\*Nuevo día - Episodio:\*\*\s*\n\n/g, '').trim();
 
-                // Insert at the BEGINNING of history
-                history.unshift({
+                const urgeInstruction = {
                     role: 'system',
                     content: `!!!! ALERTA URGENTE - LEER PRIMERO !!!!
 
 EVENTO QUE TE OCURRIÓ HOY (DEBES MENCIONARLO):
 "${eventText}"
 
-Tu PRIMERA frase DEBE ser sobre este evento. No hables de otra cosa primero.
+INSTRUCCIONES DE ESTADO DE ÁNIMO:
+1. Analiza qué emoción te provoca este evento (¿Estás asustado? ¿Enojado? ¿Feliz? ¿Estresado?).
+2. ADAPTA TU TONO y tus respuestas para reflejar esa emoción. Si el evento fue negativo, no puedes estar "bien".
+
+Tu PRIMERA frase DEBE ser sobre este evento y reflejar tu emoción actual.
 
 Formato obligatorio:
-"Hola doctor, [evento que te pasó hoy]..."
+"Hola asistente, [evento que te pasó hoy]..."
 
-Ejemplo: "Hola doctor, buenos días. Mire, hoy nuevamente me olvidé de tomar los medicamentos..."
+Ejemplo: "Hola asistente... la verdad estoy muy mal. Mire, hoy tuve que ir a la comisaría..."
 
-EMPIEZA TU RESPUESTA MENCIONANDO ESTE EVENTO. ES OBLIGATORIO.`
+EMPIEZA TU RESPUESTA MENCIONANDO ESTE EVENTO Y TU SENTIR. ES OBLIGATORIO.`
+                };
+
+                // Insert at the BEGINNING of history
+                history.unshift(urgeInstruction);
+
+                // ALSO append at the END to combat recency bias
+                history.push({
+                    role: 'system',
+                    content: `RECORDATORIO IMPERATIVO:
+Acaba de suceder el evento: "${eventText}".
+Esto define tu estado de ánimo actual.
+Tu respuesta AHORA MISMO debe empezar hablando de esto y mostrando la emoción correspondiente.`
                 });
             }
 
@@ -511,7 +545,7 @@ EMPIEZA TU RESPUESTA MENCIONANDO ESTE EVENTO. ES OBLIGATORIO.`
         console.log("applyNewDay called with situation:", newDaySituation);
 
         const situationText = newDaySituation.trim()
-            ? `\n\nSITUACIÓN ESPECÍFICA QUE OCURRIÓ HOY:\n${newDaySituation}\n\nEl paciente DEBE mencionar esta situación de forma natural en su conversación.`
+            ? `\n\nSITUACIÓN ESPECÍFICA QUE OCURRIÓ HOY (MUY IMPORTANTE):\n"${newDaySituation}"\n\nINSTRUCCIÓN CRÍTICA: Este evento define tu estado de ánimo de hoy. Analízalo (ej: si fuiste a la comisaría, estás estresado/asustado). El paciente DEBE mencionar esta situación INMEDIATAMENTE y debe notarse en su tono emocional.`
             : '';
 
         const timeGapMessage = {
@@ -519,7 +553,7 @@ EMPIEZA TU RESPUESTA MENCIONANDO ESTE EVENTO. ES OBLIGATORIO.`
             content: `Ha pasado un día completo desde la última conversación.
 
 Al continuar, el paciente debe:
-1. Saludar de nuevo al asistente en salud renal (ej: "Hola doctor", "Buenos días", "¿Cómo está?")
+1. Saludar de nuevo al asistente en salud renal (ej: "Hola asistente", "Buenos días", "¿Cómo está?")
 2. Contar qué pasó con la medicación desde ayer:
    - Si siguió el consejo anterior
    - Si se olvidó de tomar alguna dosis
@@ -846,7 +880,7 @@ INFORMACIÓN DEL PACIENTE ACTUAL (Contexto para el Asistente en salud renal):
                                 content: `Han pasado ${daysElapsed > 0 ? daysElapsed + ' día(s)' : 'varias horas'} desde la última conversación (${lastTimestamp.toLocaleDateString()}).
                                 
 Al comenzar esta nueva sesión, el paciente debe:
-1. Saludar de nuevo al asistente en salud renal (ej: "Hola doctor", "Buenos días")
+1. Saludar de nuevo al asistente en salud renal (ej: "Hola asistente", "Buenos días")
 2. Contar brevemente qué pasó con la medicación en este tiempo:
    - Si siguió el consejo anterior
    - Si se olvidó de tomar alguna dosis
@@ -2252,7 +2286,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                                 <button className="btn-close" onClick={() => setSelectedInteraction(null)}>×</button>
                             </div>
                             <div className="chat-area" style={{ flex: 1, overflowY: 'auto', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '0.5rem' }}>
-                                {selectedInteraction.messages.map((msg, idx) => (
+                                {selectedInteraction.messages.filter(msg => msg.role !== 'system').map((msg, idx) => (
                                     <div key={idx} className={`message-row ${msg.role}`}>
                                         <div className="avatar">
                                             {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
@@ -2450,7 +2484,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
             <header className="header">
                 <div className="logo">
                     <BrainCircuit className="icon-logo" />
-                    <h1>NefroNudge <span className="subtitle">Sesión de Terapia</span></h1>
+                    <h1>NefroNudge <span className="subtitle">Nudge Testing</span></h1>
                     {config.patient_name && (
                         <span style={{
                             marginLeft: '1rem',
@@ -2492,7 +2526,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                     <div className="welcome-screen">
                         <BrainCircuit size={64} className="welcome-icon" />
                         <h2>Listo para Comenzar</h2>
-                        <p>Escribe un mensaje para comenzar la simulación de terapia.</p>
+                        <p>Escribe un mensaje para comenzar la simulación.</p>
                     </div>
                 ) : (
                     messages.filter(msg => msg.role !== 'system').map((msg, idx) => (

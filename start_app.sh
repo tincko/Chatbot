@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "============================================"
-echo "  Sistema de Simulacion de Terapia Dual-LLM"
+echo "  Sistema de Simulacion de Dual-LLM"
 echo "============================================"
 echo ""
 

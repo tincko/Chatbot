@@ -1,6 +1,6 @@
 # 🏛️ Arquitectura Técnica
 
-Documentación técnica detallada del sistema de simulación de terapia dual-LLM.
+Documentación técnica detallada del sistema de simulación dual-LLM.
 
 ## 📐 Vista General de la Arquitectura
 

@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   Sistema de Simulacion de Terapia Dual-LLM
+echo   Sistema de Simulacion de Dual-LLM
 echo ============================================
 echo.
 
@@ -55,7 +55,7 @@ if not exist node_modules (
 echo.
 echo [3/4] Iniciando Backend (Python)...
 cd ..\backend
-start "Terapia LLM - Backend" cmd /k "call venv\Scripts\activate && python main.py"
+start "LLM-Dual - Backend" cmd /k "call venv\Scripts\activate && python main.py"
 
 echo [INFO] Esperando 10 segundos para que el backend inicie...
 timeout /t 10 /nobreak >nul
@@ -63,7 +63,7 @@ timeout /t 10 /nobreak >nul
 echo.
 echo [4/4] Iniciando Frontend (React)...
 cd ..\frontend
-start "Terapia LLM - Frontend" cmd /k "npm run dev"
+start "LLM-Dual - Frontend" cmd /k "npm run dev"
 
 echo.
 echo ============================================

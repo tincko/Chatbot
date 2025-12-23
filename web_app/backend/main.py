@@ -434,11 +434,23 @@ def analyze_interactions_endpoint(req: AnalyzeRequest, db: Session = Depends(get
             return None
 
         print(f"DEBUG: Processing {len(req.filenames)} filenames: {req.filenames}")
+        print(f"DEBUG: Filenames type: {type(req.filenames)}")
+        if len(req.filenames) > 0:
+            print(f"DEBUG: First filename repr: {repr(req.filenames[0])}")
         
         for fname in req.filenames:
             data = find_in_db(fname)
+            print(f"DEBUG: find_in_db('{fname}') returned: {'FOUND' if data else 'NONE'}")
             
-            # Fallback: If not in DB, try loading from disk (JSON file)
+            # Fallback 1: Direct DB lookup for single file (Paranoid check)
+            if not data:
+                print(f"DEBUG: Attempting direct DB lookup for {fname}")
+                direct_data = db_helpers.get_interaction_by_filename(db, fname)
+                if direct_data:
+                    data = direct_data
+                    print(f"DEBUG: Found {fname} via direct DB lookup.")
+
+            # Fallback 2: If not in DB, try loading from disk (JSON file)
             if not data:
                 fpath = os.path.join(DIALOGOS_DIR, fname)
                 print(f"DEBUG: Checking disk for {fname} at {fpath}")
