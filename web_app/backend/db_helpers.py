@@ -72,70 +72,99 @@ def patient_to_dict(patient: Patient) -> Dict[str, Any]:
 
 def save_interaction(db: Session, interaction_data: Dict[str, Any]) -> Dict[str, str]:
     """
-    Save a new interaction to database.
-    Returns dict with status and filename for compatibility.
+    Save a new interaction or update an existing one.
+    Returns dict with status and filename.
     """
     config = interaction_data.get('config', {})
     messages_data = interaction_data.get('messages', [])
-    timestamp_str = interaction_data.get('timestamp', '')
+    existing_filename = interaction_data.get('filename')
+    title = interaction_data.get('title')
     
-    # Parse timestamp
-    try:
-        if "T" in timestamp_str:
-            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-        else:
-            timestamp = datetime.fromisoformat(timestamp_str)
-    except:
-        timestamp = datetime.utcnow()
-    
-    # Create filename for compatibility
-    filename = f"interaction_{timestamp.strftime('%Y-%m-%dT%H-%M-%S-%f')}.json"
-    
-    # Find patient_id
+    # Find patient_id (Common for create and update)
     patient_name = config.get('patient_name')
     patient_id = None
     if patient_name:
         patient = db.query(Patient).filter(Patient.nombre == patient_name).first()
         if patient:
             patient_id = patient.id
+
+    # Check if updating
+    interaction = None
+    if existing_filename:
+        interaction = db.query(Interaction).filter(Interaction.filename == existing_filename).first()
+
+    if interaction:
+        # Update existing
+        filename = existing_filename
+        interaction.timestamp = datetime.utcnow()
+        
+        interaction.chatbot_model = config.get('chatbot_model')
+        interaction.patient_model = config.get('patient_model')
+        interaction.psychologist_system_prompt = config.get('psychologist_system_prompt')
+        interaction.patient_system_prompt = config.get('patient_system_prompt')
+        
+        if title is not None:
+             interaction.title = title
+        
+        # Update patient link
+        interaction.patient_id = patient_id
+        
+        # Clear existing messages to replace them
+        db.query(Message).filter(Message.interaction_id == interaction.id).delete(synchronize_session=False)
+        
+    else:
+        # Create new
+        timestamp_str = interaction_data.get('timestamp', '')
+        try:
+            if "T" in timestamp_str:
+                timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            else:
+                timestamp = datetime.fromisoformat(timestamp_str)
+        except:
+            timestamp = datetime.utcnow()
+            
+        filename = f"interaction_{timestamp.strftime('%Y-%m-%dT%H-%M-%S-%f')}.json"
+        
+        interaction = Interaction(
+            timestamp=timestamp,
+            patient_id=patient_id,
+            chatbot_model=config.get('chatbot_model'),
+            patient_model=config.get('patient_model'),
+            psychologist_system_prompt=config.get('psychologist_system_prompt'),
+            patient_system_prompt=config.get('patient_system_prompt'),
+            filename=filename,
+            title=title
+        )
+        db.add(interaction)
     
-    # Create interaction
-    interaction = Interaction(
-        timestamp=timestamp,
-        patient_id=patient_id,
-        chatbot_model=config.get('chatbot_model'),
-        patient_model=config.get('patient_model'),
-        psychologist_system_prompt=config.get('psychologist_system_prompt'),
-        patient_system_prompt=config.get('patient_system_prompt'),
-        psychologist_params={
-            'temperature': config.get('psychologist_temperature'),
-            'top_p': config.get('psychologist_top_p'),
-            'top_k': config.get('psychologist_top_k'),
-            'max_tokens': config.get('psychologist_max_tokens'),
-            'presence_penalty': config.get('psychologist_presence_penalty'),
-            'frequency_penalty': config.get('psychologist_frequency_penalty'),
-        },
-        patient_params={
-            'temperature': config.get('patient_temperature'),
-            'top_p': config.get('patient_top_p'),
-            'top_k': config.get('patient_top_k'),
-            'max_tokens': config.get('patient_max_tokens'),
-            'presence_penalty': config.get('patient_presence_penalty'),
-            'frequency_penalty': config.get('patient_frequency_penalty'),
-        },
-        filename=filename
-    )
+    # Update/Set Params (Common for both)
+    interaction.psychologist_params={
+        'temperature': config.get('psychologist_temperature'),
+        'top_p': config.get('psychologist_top_p'),
+        'top_k': config.get('psychologist_top_k'),
+        'max_tokens': config.get('psychologist_max_tokens'),
+        'presence_penalty': config.get('psychologist_presence_penalty'),
+        'frequency_penalty': config.get('psychologist_frequency_penalty'),
+    }
+    interaction.patient_params={
+        'temperature': config.get('patient_temperature'),
+        'top_p': config.get('patient_top_p'),
+        'top_k': config.get('patient_top_k'),
+        'max_tokens': config.get('patient_max_tokens'),
+        'presence_penalty': config.get('patient_presence_penalty'),
+        'frequency_penalty': config.get('patient_frequency_penalty'),
+    }
     
-    db.add(interaction)
-    db.flush()  # Get interaction.id
-    
-    # Create messages
+    db.flush() # Ensure ID exists
+
+    # Create/Re-create messages
     for i, msg_data in enumerate(messages_data):
         message = Message(
             interaction_id=interaction.id,
             order=i,
             role=msg_data.get('role'),
             content=msg_data.get('content'),
+            thought=msg_data.get('thought'),
             suggested_reply_used=msg_data.get('suggested_reply_used', False)
         )
         db.add(message)
@@ -143,8 +172,8 @@ def save_interaction(db: Session, interaction_data: Dict[str, Any]) -> Dict[str,
     db.commit()
     
     # Update patient's last interaction
-    if patient_id:
-        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if interaction.patient_id:
+        patient = db.query(Patient).filter(Patient.id == interaction.patient_id).first()
         if patient:
             patient.last_interaction_file = filename
             patient.last_interaction_id = interaction.id
@@ -167,7 +196,8 @@ def get_all_interactions(db: Session) -> List[Dict[str, Any]]:
             'timestamp': interaction.timestamp.isoformat(),
             'chatbot_model': interaction.chatbot_model or 'N/A',
             'patient_model': interaction.patient_model or 'N/A',
-            'patient_name': interaction.patient.nombre if interaction.patient else 'Desconocido'
+            'patient_name': interaction.patient.nombre if interaction.patient else 'Desconocido',
+            'title': interaction.title
         })
     
     return result
@@ -189,6 +219,16 @@ def delete_interaction_by_filename(db: Session, filename: str):
     if interaction:
         db.delete(interaction)
         db.commit()
+
+
+def update_interaction_title(db: Session, filename: str, title: str) -> bool:
+    """Update only the title of an interaction"""
+    interaction = db.query(Interaction).filter(Interaction.filename == filename).first()
+    if interaction:
+        interaction.title = title
+        db.commit()
+        return True
+    return False
 
 
 def interaction_to_dict(interaction: Interaction) -> Dict[str, Any]:
@@ -232,6 +272,7 @@ def interaction_to_dict(interaction: Interaction) -> Dict[str, Any]:
         {
             'role': msg.role,
             'content': msg.content,
+            'thought': msg.thought,
             'suggested_reply_used': msg.suggested_reply_used
         }
         for msg in sorted(interaction.messages, key=lambda m: m.order)
@@ -240,7 +281,9 @@ def interaction_to_dict(interaction: Interaction) -> Dict[str, Any]:
     return {
         'timestamp': interaction.timestamp.isoformat(),
         'config': config,
-        'messages': messages
+        'messages': messages,
+        'title': interaction.title,
+        'filename': interaction.filename
     }
 
 

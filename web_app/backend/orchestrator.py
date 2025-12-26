@@ -45,52 +45,85 @@ class DualLLMOrchestrator:
             print(f"Error calling LLM {model}: {error_msg}")
             raise Exception(f"LLM Call Failed: {error_msg}")
 
-    def _clean_think_tags(self, text: str) -> str:
-        """Removes thinking blocks and other model artifacts to extract the final response."""
-        
-        # 1. Remove standard <think> blocks (closed and unclosed)
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-        text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL)
-        # Handle case where model starts directly with thinking but forgets opening tag
-        # We look for a closing </think> and assume everything before it is thought if it looks like one.
-        # But to be safe, we only do this if we see a </think> but no <think>
-        if "</think>" in text and "<think>" not in text:
-             text = re.sub(r"^.*?</think>", "", text, flags=re.DOTALL)
-        
-        # 2. Remove other common reasoning markers used by various models
-        # e.g. <|thought|>, <reasoning>, etc.
-        text = re.sub(r"<\|thought\|>.*?(<\|/thought\|>|$)", "", text, flags=re.DOTALL)
-        text = re.sub(r"<reasoning>.*?(</reasoning>|$)", "", text, flags=re.DOTALL)
-        
-        # 3. Remove <|channel|>... tags (common in some fine-tunes)
-        text = re.sub(r"<\|.*?\|>.*?(?=\b[A-ZÁÉÍÓÚÑ]|$)", "", text, flags=re.DOTALL) 
-        text = re.sub(r"<\|.*?\|>", "", text)
-        
-        # 4. Remove specific artifacts like <｜begin of sentence｜>Human:
-        text = re.sub(r"<｜.*?｜>Human:", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"<｜.*?｜>", "", text)
+    def _extract_thought_and_response(self, text: str) -> dict:
+        """
+        Extracts thinking blocks and cleaning artifacts. 
+        Returns a dict: {'thought': str|None, 'content': str}
+        """
+        thought = None
+        cleaned_text = text
 
-        # 5. Handle models that output "Thought: ... Response: ..." pattern
-        # If we find a clear "Response:" or "Answer:" marker, take everything after it.
-        # This is a strong heuristic for models that don't use XML tags for thinking.
-        split_match = re.split(r"(?:^|\n)(?:Response|Answer|Respuesta|Contestación):\s*", text, flags=re.IGNORECASE)
-        if len(split_match) > 1:
-            # Return the last part, which should be the actual response
-            return split_match[-1].strip()
-
-        # 6. Remove common reasoning preambles (heuristic fallback)
-        if re.match(r"^(We are asked|Here is a suggestion|The user wants|So reply|Thinking Process:)", text, re.IGNORECASE):
-            # Try to find the last quoted string
-            quotes = re.findall(r'"([^"]*)"', text)
-            if quotes:
-                return quotes[-1].strip()
+        # 1. Extract standard <think> blocks
+        think_match = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
+        if think_match:
+            thought = think_match.group(1).strip()
+            # Remove the think block from the text
+            cleaned_text = re.sub(r"<think>.*?</think>", "", cleaned_text, flags=re.DOTALL)
+        
+        # 1.5 Extract <thought> blocks if <think> wasn't found
+        if not thought:
+            thought_match = re.search(r"<thought>(.*?)</thought>", text, flags=re.DOTALL)
+            if thought_match:
+                thought = thought_match.group(1).strip()
+                cleaned_text = re.sub(r"<thought>.*?</thought>", "", cleaned_text, flags=re.DOTALL)
+            elif "<thought>" in text: # Handle unclosed <thought>
+                parts = text.split("<thought>", 1)
+                if len(parts) > 1:
+                    thought = parts[1].strip()
+                    cleaned_text = parts[0].strip()
+        else:
+            # Handle unclosed <think> tag (at start)
+            if "<think>" in text:
+                # If <think> is present but no closing </think>, assume everything after it is thought
+                parts = text.split("<think>", 1) # Split only on the first occurrence
+                if len(parts) > 1:
+                    thought = parts[1].strip()
+                    cleaned_text = parts[0].strip()
             
-            # Or try to split by "So reply..." or similar markers
-            split_match = re.split(r"(So reply|The response is|Answer):", text, flags=re.IGNORECASE)
-            if len(split_match) > 1:
-                return split_match[-1].strip()
+            # Handle unclosed </think> (at end, missing start)
+            # This usually means the thought was at the start but the tag was cut or malformed
+            # We extract everything before </think> as thought, if no <think> was found
+            if "</think>" in text and "<think>" not in text:
+                 split_match = re.split(r"</think>", text, flags=re.DOTALL, maxsplit=1)
+                 if len(split_match) > 1:
+                     thought = split_match[0].strip()
+                     cleaned_text = split_match[1]
 
-        return text.strip()
+        # 2. Cleanup other artifacts from cleaned_text (same as previous logic)
+        
+        # Remove empty thinking artifacts left over
+        cleaned_text = re.sub(r"<think>.*$", "", cleaned_text, flags=re.DOTALL)
+
+        # Remove other common reasoning markers
+        cleaned_text = re.sub(r"<\|thought\|>.*?(<\|/thought\|>|$)", "", cleaned_text, flags=re.DOTALL)
+        cleaned_text = re.sub(r"<reasoning>.*?(</reasoning>|$)", "", cleaned_text, flags=re.DOTALL)
+        
+        # Remove <|channel|>... tags
+        cleaned_text = re.sub(r"<\|.*?\|>.*?(?=\b[A-ZÁÉÍÓÚÑ]|$)", "", cleaned_text, flags=re.DOTALL) 
+        cleaned_text = re.sub(r"<\|.*?\|>", "", cleaned_text)
+        
+        # Remove <｜begin of sentence｜>Human:
+        cleaned_text = re.sub(r"<｜.*?｜>Human:", "", cleaned_text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r"<｜.*?｜>", "", cleaned_text)
+
+        # Handle "Thought: ... Response: ..." pattern if we haven't found a thought yet
+        if not thought:
+            split_match = re.split(r"(?:^|\n)(?:Response|Answer|Respuesta|Contestación):\s*", cleaned_text, flags=re.IGNORECASE)
+            if len(split_match) > 1:
+                # First part might be the thought
+                potential_thought = split_match[0]
+                # Heuristic: check if it starts with "Thought:"
+                if re.match(r"(?:^|\n)Thought:", potential_thought, re.IGNORECASE):
+                    thought = re.sub(r"^Thought:\s*", "", potential_thought, flags=re.IGNORECASE).strip()
+                cleaned_text = split_match[-1]
+        else:
+            # If a thought was already extracted, ensure the cleaned_text is just the response part
+            split_match = re.split(r"(?:^|\n)(?:Response|Answer|Respuesta|Contestación):\s*", cleaned_text, flags=re.IGNORECASE)
+            if len(split_match) > 1:
+                cleaned_text = split_match[-1]
+
+
+        return {"thought": thought, "content": cleaned_text.strip()}
 
     def get_patient_suggestion(self, patient_model, history, psychologist_message, system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2):
         """
@@ -254,7 +287,7 @@ class DualLLMOrchestrator:
             frequency_penalty=frequency_penalty
         )
         
-        return self._clean_think_tags(raw_response)
+        return self._extract_thought_and_response(raw_response)
 
     def generate_suggestion_only(self, patient_model, history, user_message, psychologist_response, patient_system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2):
         """
@@ -262,7 +295,7 @@ class DualLLMOrchestrator:
         """
         updated_history = history + [{"role": "user", "content": user_message}]
         
-        suggested_reply = self._clean_think_tags(self.get_patient_suggestion(
+        suggested_reply_data = self._extract_thought_and_response(self.get_patient_suggestion(
             patient_model, 
             updated_history, 
             psychologist_response,
@@ -274,6 +307,7 @@ class DualLLMOrchestrator:
             presence_penalty=presence_penalty,
             frequency_penalty=frequency_penalty
         ))
+        suggested_reply = suggested_reply_data['content']
 
         # Clean any exposed instructions from the response
         import re
@@ -363,7 +397,8 @@ class DualLLMOrchestrator:
             print(f"Raw profile response: {response_text[:200]}...") 
             
             # 1. Clean think tags
-            response_text = self._clean_think_tags(response_text)
+            response_data = self._extract_thought_and_response(response_text)
+            response_text = response_data['content']
             
             # 2. Remove markdown code blocks if present
             response_text = re.sub(r'```json\s*', '', response_text)
@@ -453,11 +488,11 @@ class DualLLMOrchestrator:
         
         print(f"--- Analyzing Interactions with {model} ---")
         
-        return self._clean_think_tags(self._call_llm(
+        return self._extract_thought_and_response(self._call_llm(
             model,
             messages,
             **kwargs
-        ))
+        ))['content']
 
     def chat_analysis(self, model, history, system_prompt, context, **kwargs):
         """
@@ -478,11 +513,11 @@ class DualLLMOrchestrator:
             messages.append({"role": msg['role'], "content": msg['content']})
             
         print(f"--- Chat Analysis with {model} ---")
-        return self._clean_think_tags(self._call_llm(
+        return self._extract_thought_and_response(self._call_llm(
             model,
             messages,
             **kwargs
-        ))
+        ))['content']
 
     def simulate_interaction(self, chatbot_model, patient_model, psychologist_system_prompt, patient_system_prompt, turns=5, **kwargs):
         """
@@ -523,12 +558,13 @@ class DualLLMOrchestrator:
             
             patient_messages = [{"role": "system", "content": patient_system_prompt}] + patient_history_input
             
-            patient_response = self._clean_think_tags(self._call_llm(
+            patient_response_data = self._extract_thought_and_response(self._call_llm(
                 patient_model,
                 patient_messages,
                 temperature=kwargs.get('patient_temperature', 0.7),
                 max_tokens=kwargs.get('patient_max_tokens', 600)
             ))
+            patient_response = patient_response_data['content']
             
             # Add to main history and log
             history.append({"role": "user", "content": patient_response})
@@ -539,12 +575,14 @@ class DualLLMOrchestrator:
             
             psico_messages = [{"role": "system", "content": psychologist_system_prompt}] + history
             
-            psychologist_response = self._clean_think_tags(self._call_llm(
+            psychologist_response_data = self._extract_thought_and_response(self._call_llm(
                 chatbot_model,
                 psico_messages,
                 temperature=kwargs.get('psychologist_temperature', 0.7),
                 max_tokens=kwargs.get('psychologist_max_tokens', 600)
             ))
+            
+            psychologist_response = psychologist_response_data['content']
             
             last_psychologist_msg = psychologist_response
             

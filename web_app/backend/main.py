@@ -12,6 +12,7 @@ from rag_manager import RAGManager
 from sqlalchemy.orm import Session
 from database import get_db, init_db
 import db_helpers
+import traceback
 
 # Initialize database on startup
 init_db()
@@ -54,6 +55,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    thought: Optional[str] = None
 
 class SuggestionRequest(BaseModel):
     history: List[Dict[str, str]]
@@ -69,28 +71,15 @@ class SuggestionRequest(BaseModel):
     frequency_penalty: Optional[float] = 0.2
     rag_documents: Optional[List[str]] = []
 
-class ChatResponse(BaseModel):
-    response: str
-
-class SuggestionRequest(BaseModel):
-    history: List[Dict[str, str]]
-    user_message: str
-    psychologist_response: str
-    patient_model: str
-    patient_system_prompt: Optional[str] = None
-    temperature: Optional[float] = 0.7
-    top_p: Optional[float] = 0.9
-    top_k: Optional[int] = 40
-    max_tokens: Optional[int] = 600
-    presence_penalty: Optional[float] = 0.1
-    frequency_penalty: Optional[float] = 0.2
-
 class SuggestionResponse(BaseModel):
     suggested_reply: str
 
 class GenerateProfileRequest(BaseModel):
     model: str
     guidance: Optional[str] = None
+
+# Removing Duplicate Class Definition if it exists in the original file, but here just redefining efficiently
+# The file had duplicate definitions in lines 55 and 72. I will replace the first block and hopefully clean up.
 
 @app.get("/api/models")
 def get_models():
@@ -111,7 +100,7 @@ def chat_endpoint(req: ChatRequest):
                 context_text += "=======================================\n"
                 print(f"RAG Context length: {len(context_text)}")
 
-        response = orchestrator.chat_psychologist(
+        result = orchestrator.chat_psychologist(
             req.chatbot_model,
             req.history,
             req.message,
@@ -124,7 +113,7 @@ def chat_endpoint(req: ChatRequest):
             req.frequency_penalty,
             context=context_text 
         )
-        return ChatResponse(response=response)
+        return ChatResponse(response=result['content'], thought=result['thought'])
     except Exception as e:
         print(f"Error in chat_endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -218,6 +207,8 @@ class SaveInteractionRequest(BaseModel):
     timestamp: str
     config: Dict[str, Any]
     messages: List[Dict[str, Any]]
+    filename: Optional[str] = None
+    title: Optional[str] = None
 
 @app.post("/api/save_interaction")
 def save_interaction(data: SaveInteractionRequest, db: Session = Depends(get_db)):
@@ -227,6 +218,7 @@ def save_interaction(data: SaveInteractionRequest, db: Session = Depends(get_db)
         return result
     except Exception as e:
         print(f"Error saving interaction: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/interactions")
@@ -248,6 +240,20 @@ def delete_interaction(filename: str, db: Session = Depends(get_db)):
     try:
         db_helpers.delete_interaction_by_filename(db, filename)
         return {"status": "success", "message": "Interaction deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class TitleUpdateRequest(BaseModel):
+    title: str
+
+@app.patch("/api/interactions/{filename}/title")
+def update_interaction_title_endpoint(filename: str, request: TitleUpdateRequest, db: Session = Depends(get_db)):
+    """Update interaction title"""
+    try:
+        success = db_helpers.update_interaction_title(db, filename, request.title)
+        if not success:
+            raise HTTPException(status_code=404, detail="Interaction not found")
+        return {"status": "success", "title": request.title}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

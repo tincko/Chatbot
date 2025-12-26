@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare, Clock } from 'lucide-react';
+import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare, Clock, GitBranch, Save, Edit } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -29,6 +29,7 @@ SOBRE EL PASO DE LOS DÍAS:
 
 function App() {
     const [view, setView] = useState('setup'); // setup, chat, history
+    const [currentInteractionFilename, setCurrentInteractionFilename] = useState(null);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -297,11 +298,46 @@ function App() {
         }
     };
 
+    // Title Editing
+    const [editingInteractionFilename, setEditingInteractionFilename] = useState(null);
+    const [editingTitleValue, setEditingTitleValue] = useState("");
+    const [currentInteractionTitle, setCurrentInteractionTitle] = useState(null); // Title for current chat
+
+    const handleStartEditingTitle = (interaction) => {
+        setEditingInteractionFilename(interaction.filename);
+        setEditingTitleValue(interaction.title || "");
+    };
+
+    const handleSaveTitle = async (filename) => {
+        try {
+            const res = await fetch(`http://localhost:8000/api/interactions/${filename}/title`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: editingTitleValue })
+            });
+
+            if (res.ok) {
+                setEditingInteractionFilename(null);
+                fetchInteractions(); // Refresh list
+                setNotification({ type: 'success', message: 'Título actualizado' });
+                setTimeout(() => setNotification(null), 2000);
+            } else {
+                alert("Error actualizando título");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error de conexión");
+        }
+    };
+
     const startSession = () => {
         if (!soloMode && !config.patient_name) {
             alert("Por favor selecciona un perfil de paciente primero, o habilita el 'Modo Solitario' para chatear solo con el asistente en salud renal.");
             return;
         }
+        setMessages([]); // Clear previous chat history
+        setCurrentInteractionFilename(null); // Ensure fresh start
+        setCurrentInteractionTitle(null);
         setView('chat');
         // No longer auto-generate initial suggestion - user will click button when ready
     };
@@ -309,21 +345,27 @@ function App() {
     const endSession = () => {
         if (window.confirm("¿Estás seguro de que quieres terminar esta sesión? El historial del chat se perderá.")) {
             setMessages([]);
+            setCurrentInteractionFilename(null);
             setView('setup');
         }
     };
 
     const [notification, setNotification] = useState(null);
 
-    const saveInteraction = async () => {
+    const saveInteraction = async (asNew = false) => {
+        // Handle event object if passed directly
+        if (typeof asNew !== 'boolean') asNew = false;
+
         const interactionData = {
             timestamp: new Date().toISOString(),
             config: config,
             messages: messages.map(msg => ({
                 role: msg.role,
                 content: msg.content,
+                thought: msg.thought,
                 suggested_reply_used: msg.role === 'user' ? msg.suggested_reply_used : undefined
-            }))
+            })),
+            filename: asNew ? null : currentInteractionFilename
         };
 
         try {
@@ -335,6 +377,22 @@ function App() {
 
             if (res.ok) {
                 const data = await res.json();
+                setCurrentInteractionFilename(data.filename);
+
+                const actionMsg = asNew ? 'Interacción bifurcada (nueva rama)' : 'Interacción guardada';
+
+                if (asNew) {
+                    // Fork: Stay in chat
+                    setNotification({ type: 'success', message: `${actionMsg}. Seguimos en la copia.` });
+                } else {
+                    // Save (Update): Exit to home
+                    setMessages([]);
+                    setCurrentInteractionFilename(null);
+                    setView('setup');
+                    setNotification({ type: 'success', message: `${actionMsg}. Volviendo al inicio.` });
+                }
+
+                setTimeout(() => setNotification(null), 3000);
 
                 // Update the patient's last_interaction_file if a patient is selected
                 if (config.patient_name) {
@@ -348,17 +406,14 @@ function App() {
                         await savePatientsToBackend(updatedPatients);
                     }
                 }
-
-                setMessages([]);
-                setView('setup');
-                setNotification(`Interacción guardada exitosamente como ${data.filename}`);
-                setTimeout(() => setNotification(null), 10000);
             } else {
-                throw new Error('Error al guardar la interacción');
+                const errorText = await res.text();
+                console.error("Server Error:", errorText);
+                throw new Error(`Error del servidor: ${res.status} - ${errorText}`);
             }
         } catch (error) {
             console.error("Error saving interaction:", error);
-            alert("Error al guardar la interacción en el servidor.");
+            alert(`Error al guardar: ${error.message}`);
         }
     };
 
@@ -404,7 +459,7 @@ function App() {
             if (!res.ok) throw new Error('Error al obtener respuesta');
             const data = await res.json();
 
-            const botMsg = { role: 'assistant', content: data.response };
+            const botMsg = { role: 'assistant', content: data.response, thought: data.thought };
             setMessages(prev => [...prev, botMsg]);
 
             // No longer auto-generate suggestion - user will click button instead
@@ -1052,8 +1107,8 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
 
 
                 {notification && (
-                    <div className="notification success">
-                        {notification}
+                    <div className={`notification ${notification.type || 'success'}`}>
+                        {typeof notification === 'string' ? notification : notification.message}
                     </div>
                 )}
 
@@ -1926,6 +1981,31 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
         }
     };
 
+
+
+    const handleContinueInteraction = async (filename) => {
+        try {
+            const res = await fetch(`http://localhost:8000/api/interactions/${filename}`);
+            if (res.ok) {
+                const fullInteraction = await res.json();
+                setMessages(fullInteraction.messages);
+                setConfig(prev => ({
+                    ...prev,
+                    ...fullInteraction.config
+                }));
+                setCurrentInteractionFilename(filename);
+                setCurrentInteractionTitle(fullInteraction.title);
+                setView('chat');
+                setSelectedInteraction(null);
+            } else {
+                alert("Error al recuperar la interacción completa.");
+            }
+        } catch (error) {
+            console.error("Error loading interaction:", error);
+            alert("Error de conexión al recuperar la interacción.");
+        }
+    };
+
     if (view === 'history') {
         return (
             <div className="app-container history-view">
@@ -2258,11 +2338,35 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                                                     <span className="date-badge">
                                                         {new Date(interaction.timestamp).toLocaleString()}
                                                     </span>
+
+                                                    {editingInteractionFilename === interaction.filename ? (
+                                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                                                            <input
+                                                                value={editingTitleValue}
+                                                                onChange={e => setEditingTitleValue(e.target.value)}
+                                                                style={{ padding: '4px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #555', background: '#333', color: 'white', minWidth: '150px' }}
+                                                                autoFocus
+                                                                placeholder="Título..."
+                                                            />
+                                                            <button className="btn-secondary btn-xs" onClick={() => handleSaveTitle(interaction.filename)} style={{ padding: '4px' }}><Save size={14} /></button>
+                                                            <button className="btn-secondary btn-xs" onClick={() => setEditingInteractionFilename(null)} style={{ padding: '4px' }}><X size={14} /></button>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            {interaction.title && <span style={{ fontSize: '0.9rem', color: '#fb923c', fontWeight: '500' }}>{interaction.title}</span>}
+                                                            <button className="btn-icon" onClick={(e) => { e.stopPropagation(); handleStartEditingTitle(interaction); }} style={{ opacity: 0.6, padding: '4px' }} title="Editar título">
+                                                                <Edit size={14} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div className="meta-info">
                                                     Models: <span style={{ color: 'var(--accent)' }}>{interaction.chatbot_model}</span> vs <span style={{ color: 'var(--accent)' }}>{interaction.patient_model}</span>
                                                 </div>
                                             </div>
+                                            <button className="btn-secondary btn-sm" onClick={() => handleContinueInteraction(interaction.filename)} title="Continuar Chat">
+                                                <Play size={16} />
+                                            </button>
                                             <button className="btn-secondary btn-sm" onClick={() => handleViewInteraction(interaction.filename)}>
                                                 <Eye size={16} /> Ver
                                             </button>
@@ -2292,6 +2396,36 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                                             {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
                                         </div>
                                         <div className="message-content">
+                                            {msg.thought && (
+                                                <details className="thought-display" style={{ marginBottom: '0.5rem' }}>
+                                                    <summary style={{
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                        color: 'var(--text-secondary)',
+                                                        userSelect: 'none',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.25rem',
+                                                        opacity: 0.8
+                                                    }}>
+                                                        <BrainCircuit size={12} /> Pensamiento
+                                                    </summary>
+                                                    <div style={{
+                                                        marginTop: '0.5rem',
+                                                        padding: '0.75rem',
+                                                        background: 'rgba(0,0,0,0.2)',
+                                                        borderLeft: '2px solid var(--accent)',
+                                                        fontSize: '0.85rem',
+                                                        color: '#94a3b8',
+                                                        borderRadius: '0 4px 4px 0',
+                                                        fontStyle: 'italic',
+                                                        whiteSpace: 'pre-wrap',
+                                                        fontFamily: 'monospace'
+                                                    }}>
+                                                        {msg.thought}
+                                                    </div>
+                                                </details>
+                                            )}
                                             <div className="text">
                                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
                                             </div>
@@ -2499,6 +2633,11 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                         }}>
                             <User size={14} />
                             {config.patient_name}
+                            {currentInteractionTitle && (
+                                <span style={{ opacity: 0.8, marginLeft: '0.5rem', paddingLeft: '0.5rem', borderLeft: '1px solid rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                                    {currentInteractionTitle}
+                                </span>
+                            )}
                         </span>
                     )}
                 </div>
@@ -2548,6 +2687,36 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                                 ) : <Bot size={20} />}
                             </div>
                             <div className="message-content">
+                                {msg.thought && (
+                                    <details className="thought-display" style={{ marginBottom: '0.5rem' }}>
+                                        <summary style={{
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            color: 'var(--text-secondary)',
+                                            userSelect: 'none',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.25rem',
+                                            opacity: 0.8
+                                        }}>
+                                            <BrainCircuit size={12} /> Pensamiento
+                                        </summary>
+                                        <div style={{
+                                            marginTop: '0.5rem',
+                                            padding: '0.75rem',
+                                            background: 'rgba(0,0,0,0.2)',
+                                            borderLeft: '2px solid var(--accent)',
+                                            fontSize: '0.85rem',
+                                            color: '#94a3b8',
+                                            borderRadius: '0 4px 4px 0',
+                                            fontStyle: 'italic',
+                                            whiteSpace: 'pre-wrap',
+                                            fontFamily: 'monospace'
+                                        }}>
+                                            {msg.thought}
+                                        </div>
+                                    </details>
+                                )}
                                 <div className="text">
                                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                                 </div>
@@ -2607,9 +2776,14 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                     <button type="submit" disabled={loading || !input.trim()}>
                         <Send size={20} />
                     </button>
-                    <button type="button" onClick={saveInteraction} title="Guardar Interacción" className="btn-secondary">
-                        <Download size={20} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        <button type="button" onClick={() => saveInteraction(false)} title="Guardar Actual (Sobreescribir)" className="btn-secondary">
+                            <Save size={20} />
+                        </button>
+                        <button type="button" onClick={() => saveInteraction(true)} title="Bifurcar (Guardar como Nueva Rama)" className="btn-secondary" style={{ color: '#fb923c', borderColor: '#fb923c' }}>
+                            <GitBranch size={20} />
+                        </button>
+                    </div>
                 </form>
             </div>
 

@@ -69,6 +69,9 @@ class Interaction(Base):
     # Legacy filename for compatibility
     filename = Column(String, unique=True, index=True)
     
+    # User-defined Title
+    title = Column(Text, nullable=True)
+    
     # Relationships
     patient = relationship("Patient", back_populates="interactions", foreign_keys=[patient_id])
     messages = relationship("Message", back_populates="interaction", cascade="all, delete-orphan", order_by="Message.order")
@@ -84,6 +87,7 @@ class Message(Base):
     order = Column(Integer, nullable=False)  # Order in conversation
     role = Column(String, nullable=False, index=True)  # user, assistant, system, episode
     content = Column(Text, nullable=False)
+    thought = Column(Text, nullable=True)
     
     # Metadata
     suggested_reply_used = Column(Boolean, default=False)
