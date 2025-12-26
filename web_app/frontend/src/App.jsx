@@ -10,6 +10,8 @@ const DEFAULT_ANALYSIS_PROMPT = "Sos un supervisor clínico experto en trasplant
 
 const DEFAULT_HISTORY_CHAT_PROMPT = "Sos un asistente experto que tiene acceso al historial de conversaciones de terapia simulada.\nTu objetivo es responder preguntas del usuario sobre estas conversaciones, buscando patrones, detalles específicos o resumiendo información.\nUsa el contexto proporcionado para fundamentar tus respuestas.";
 
+const DEFAULT_GENERIC_EXPERT_PROMPT = "Sos un experto en nefrología, salud conductual y el modelo COM-B.\nTu objetivo es responder preguntas generales sobre estos temas y sobre la documentación proporcionada, sin hacer referencia a pacientes específicos ni historiales clínicos.\nUsa el contexto de los documentos para fundamentar tus respuestas si están disponibles.";
+
 const DEFAULT_PATIENT_INSTRUCTIONS = `HABLÁS SIEMPRE en primera persona, como si realmente fueras este paciente.
 Respondés contando emociones, dificultades y sensaciones reales.
 Nunca digas que sos un modelo de lenguaje.
@@ -1779,10 +1781,6 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
     };
 
     const handleStartAnalysisChat = () => {
-        if (selectedInteractionIds.size === 0) {
-            alert("Por favor selecciona al menos una interacción para analizar.");
-            return;
-        }
         if (!analysisModel) {
             alert("Por favor selecciona un modelo para análisis.");
             return;
@@ -1808,7 +1806,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                     interaction_filenames: Array.from(selectedInteractionIds),
                     document_filenames: Array.from(selectedDocumentIds),
                     model: analysisModel,
-                    system_prompt: historyChatPrompt || DEFAULT_HISTORY_CHAT_PROMPT,
+                    system_prompt: selectedInteractionIds.size > 0 ? (historyChatPrompt || DEFAULT_HISTORY_CHAT_PROMPT) : DEFAULT_GENERIC_EXPERT_PROMPT,
                     temperature: parseFloat(config.history_chat_temperature),
                     top_p: parseFloat(config.history_chat_top_p),
                     top_k: parseInt(config.history_chat_top_k),
@@ -2043,10 +2041,10 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                         <button
                             className="btn-secondary"
                             onClick={handleStartAnalysisChat}
-                            disabled={selectedInteractionIds.size === 0}
+                            disabled={!analysisModel}
                             style={{ marginLeft: '0.5rem' }}
                         >
-                            <MessageSquare size={16} /> Chatear con Historial
+                            <MessageSquare size={16} /> {selectedInteractionIds.size > 0 ? "Hablar con Historial" : "Hablar con la LLM"}
                         </button>
                     </div>
                     <div className="form-group" style={{ marginBottom: '1rem' }}>
