@@ -93,6 +93,9 @@ class Message(Base):
     suggested_reply_used = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
     
+    # Sentiment Analysis (JSON: valencia, hostilidad, etc.)
+    sentiment = Column(JSON, nullable=True)
+    
     # Relationships
     interaction = relationship("Interaction", back_populates="messages")
 

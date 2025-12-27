@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare, Clock, GitBranch, Save, Edit } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Send, Bot, User, BrainCircuit, Loader2, Play, Download, X, History, ArrowLeft, Eye, Trash2, FileText, Upload, Trash, ChevronDown, ChevronRight, MessageSquare, Clock, GitBranch, Save, Edit, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -81,6 +82,9 @@ function App() {
     const [showPatientPrompt, setShowPatientPrompt] = useState(false);
     const [showAnalysisPrompt, setShowAnalysisPrompt] = useState(false);
     const [showRagConfig, setShowRagConfig] = useState(false);
+
+    // Delete Confirmation states
+    const [interactionToDelete, setInteractionToDelete] = useState(null);
 
     const [config, setConfig] = useState({
         chatbot_model: 'mental_llama3.1-8b-mix-sft',
@@ -344,12 +348,24 @@ function App() {
         // No longer auto-generate initial suggestion - user will click button when ready
     };
 
+    const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+
     const endSession = () => {
-        if (window.confirm("¿Estás seguro de que quieres terminar esta sesión? El historial del chat se perderá.")) {
-            setMessages([]);
-            setCurrentInteractionFilename(null);
-            setView('setup');
+        console.log("endSession called. Messages length:", messages.length);
+        if (messages.length > 0) {
+            console.log("Showing exit confirmation");
+            setShowExitConfirmation(true);
+        } else {
+            console.log("Performing end session directly");
+            performEndSession();
         }
+    };
+
+    const performEndSession = () => {
+        setMessages([]);
+        setCurrentInteractionFilename(null);
+        setView('setup');
+        setShowExitConfirmation(false);
     };
 
     const [notification, setNotification] = useState(null);
@@ -424,7 +440,8 @@ function App() {
         if (!input.trim() || loading) return;
 
         const isSuggested = input === suggestedReply;
-        const userMsg = { role: 'user', content: input, suggested_reply_used: isSuggested };
+        const msgId = Date.now().toString();
+        const userMsg = { id: msgId, role: 'user', content: input, suggested_reply_used: isSuggested };
 
         setMessages(prev => [...prev, userMsg]);
         setInput('');
@@ -463,6 +480,58 @@ function App() {
 
             const botMsg = { role: 'assistant', content: data.response, thought: data.thought };
             setMessages(prev => [...prev, botMsg]);
+
+            // Step 2: Trigger Sentiment Analysis for the USER message (Patient)
+            console.log("Iniciando análisis de sentimiento para mensaje:", msgId);
+
+            // Temporary loading state for sentiment (optional, can be refined)
+            setMessages(currentMessages =>
+                currentMessages.map(m =>
+                    m.id === msgId
+                        ? { ...m, sentimentLoading: true }
+                        : m
+                )
+            );
+
+            fetch('http://localhost:8000/api/analyze_sentiment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: userMsg.content,
+                    model: config.chatbot_model
+                })
+            })
+                .then(r => r.json())
+                .then(sentiment => {
+                    console.log("Sentimiento recibido:", sentiment);
+                    if (sentiment && Object.keys(sentiment).length > 0) {
+                        setMessages(currentMessages =>
+                            currentMessages.map(m =>
+                                m.id === msgId
+                                    ? { ...m, sentiment: sentiment, sentimentLoading: false }
+                                    : m
+                            )
+                        );
+                    } else {
+                        setMessages(currentMessages =>
+                            currentMessages.map(m =>
+                                m.id === msgId
+                                    ? { ...m, sentimentLoading: false }
+                                    : m
+                            )
+                        );
+                    }
+                })
+                .catch(err => {
+                    console.error("Error analyzing sentiment:", err);
+                    setMessages(currentMessages =>
+                        currentMessages.map(m =>
+                            m.id === msgId
+                                ? { ...m, sentimentLoading: false }
+                                : m
+                        )
+                    );
+                });
 
             // No longer auto-generate suggestion - user will click button instead
 
@@ -782,6 +851,8 @@ El paciente debe actuar naturalmente, como si realmente hubiera pasado un día, 
             alert("Error eliminando documento");
         }
     };
+
+
 
     const generatePatientPrompt = (p) => {
         const instructions = defaultPrompts.patient_instructions || DEFAULT_PATIENT_INSTRUCTIONS;
@@ -1878,29 +1949,55 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
         }
     };
 
-    const deleteInteraction = async (filename) => {
-        if (!confirm("¿Estás seguro de que quieres eliminar esta interacción?")) return;
+    const removeInteraction = (filename) => {
+        setInteractionToDelete(filename);
+    };
+
+    const confirmRemoveInteraction = async () => {
+        const filename = interactionToDelete;
+        if (!filename) return;
 
         try {
-            const res = await fetch(`http://localhost:8000/api/interactions/${filename}`, {
+            const res = await fetch(`http://localhost:8000/api/interactions/${encodeURIComponent(filename)}`, {
                 method: 'DELETE'
             });
 
             if (res.ok) {
-                // Remove from list
+                // Remove from list immediately (optimistic)
                 setInteractions(prev => prev.filter(i => i.filename !== filename));
+
                 // Remove from selection if present
                 if (selectedInteractionIds.has(filename)) {
                     const newSelected = new Set(selectedInteractionIds);
                     newSelected.delete(filename);
                     setSelectedInteractionIds(newSelected);
                 }
+
+                // Cleanup if active
+                if (currentInteractionFilename === filename) {
+                    setMessages([]);
+                    setCurrentInteractionFilename(null);
+                    setView('setup');
+                }
+
+                // Cleanup if viewing details
+                if (selectedInteraction && selectedInteraction.filename === filename) {
+                    setSelectedInteraction(null);
+                }
+
+                // Close Modal
+                setInteractionToDelete(null);
+
+                // Background sync
+                fetchInteractions();
             } else {
-                alert("Error al eliminar interacción");
+                const errorText = await res.text();
+                // Show error as notification instead of alert
+                setNotification({ type: 'error', message: `Error al eliminar: ${errorText}` });
             }
         } catch (error) {
             console.error("Error deleting:", error);
-            alert("Error eliminando interacción");
+            setNotification({ type: 'error', message: `Error eliminando interacción: ${error.message}` });
         }
     };
 
@@ -2322,8 +2419,8 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                                     .filter(i => !filterPatientName || i.patient_name === filterPatientName)
                                     .filter(i => !filterChatbotModel || i.chatbot_model === filterChatbotModel)
                                     .filter(i => !filterPatientModel || i.patient_model === filterPatientModel)
-                                    .map((interaction, idx) => (
-                                        <div key={idx} className="history-item">
+                                    .map((interaction) => (
+                                        <div key={interaction.filename} className="history-item">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedInteractionIds.has(interaction.filename)}
@@ -2362,15 +2459,39 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                                                     Models: <span style={{ color: 'var(--accent)' }}>{interaction.chatbot_model}</span> vs <span style={{ color: 'var(--accent)' }}>{interaction.patient_model}</span>
                                                 </div>
                                             </div>
-                                            <button className="btn-secondary btn-sm" onClick={() => handleContinueInteraction(interaction.filename)} title="Continuar Chat">
+                                            <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); handleContinueInteraction(interaction.filename); }} title="Continuar Chat">
                                                 <Play size={16} />
                                             </button>
-                                            <button className="btn-secondary btn-sm" onClick={() => handleViewInteraction(interaction.filename)}>
-                                                <Eye size={16} /> Ver
-                                            </button>
-                                            <button className="btn-secondary btn-sm" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => deleteInteraction(interaction.filename)}>
-                                                <Trash2 size={16} />
-                                            </button>
+
+                                            {interactionToDelete === interaction.filename ? (
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button
+                                                        className="btn-danger btn-sm"
+                                                        onClick={(e) => { e.stopPropagation(); confirmRemoveInteraction(); }}
+                                                        title="Confirmar Borrado"
+                                                        style={{ padding: '4px 8px' }}
+                                                    >
+                                                        <Check size={16} />
+                                                    </button>
+                                                    <button
+                                                        className="btn-secondary btn-sm"
+                                                        onClick={(e) => { e.stopPropagation(); setInteractionToDelete(null); }}
+                                                        title="Cancelar"
+                                                        style={{ padding: '4px 8px' }}
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    className="btn-secondary btn-sm"
+                                                    style={{ color: '#ef4444', borderColor: '#ef4444' }}
+                                                    onClick={(e) => { e.stopPropagation(); removeInteraction(interaction.filename); }}
+                                                    title="Eliminar Interacción"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
                                         </div>
                                     ))}
                             </div>
@@ -2607,239 +2728,401 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                         </div>
                     </div>
                 )}
+
+                {/* Exit Confirmation Modal */}
+                {/* Exit Confirmation Modal */}
+                {showExitConfirmation && (
+                    <div className="modal-overlay" style={{
+                        zIndex: 2147483647,
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        background: 'rgba(0,0,0,0.85)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        pointerEvents: 'all'
+                    }}>
+                        <div className="modal-content" style={{ maxWidth: '400px', border: '1px solid #555', background: '#1e293b', boxShadow: '0 0 50px rgba(0,0,0,0.8)' }}>
+                            <div className="modal-header">
+                                <h3>¿Terminar Sesión?</h3>
+                                <button className="btn-close" onClick={() => setShowExitConfirmation(false)}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <div style={{ padding: '1.5rem 0', color: '#ccc' }}>
+                                ¿Estás seguro de que quieres terminar esta sesión? Los mensajes se borrarán.
+                            </div>
+                            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setShowExitConfirmation(false)}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    style={{ background: '#ef4444', borderColor: '#ef4444' }}
+                                    onClick={performEndSession}
+                                >
+                                    Salir sin Guardar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
-    return (
-        <div className="app-container chat-view">
-            <header className="header">
-                <div className="logo">
-                    <BrainCircuit className="icon-logo" />
-                    <h1>NefroNudge <span className="subtitle">Nudge Testing</span></h1>
-                    {config.patient_name && (
-                        <span style={{
-                            marginLeft: '1rem',
-                            fontSize: '0.9rem',
-                            color: '#94a3b8',
-                            background: 'rgba(255,255,255,0.1)',
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '999px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem'
-                        }}>
-                            <User size={14} />
-                            {config.patient_name}
-                            {currentInteractionTitle && (
-                                <span style={{ opacity: 0.8, marginLeft: '0.5rem', paddingLeft: '0.5rem', borderLeft: '1px solid rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
-                                    {currentInteractionTitle}
-                                </span>
-                            )}
-                        </span>
-                    )}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    {!soloMode && config.patient_name && (
-                        <button
-                            className="btn-secondary btn-sm"
-                            onClick={simulateNewDay}
-                            title="Simular paso de 1 día"
-                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                        >
-                            <Clock size={16} />
-                            Nuevo Día
-                        </button>
-                    )}
-                    <button className="btn-icon" onClick={endSession}>
-                        <X size={24} />
-                    </button>
-                </div>
-            </header>
-
-
-            <div className="chat-area">
-                {messages.length === 0 ? (
-                    <div className="welcome-screen">
-                        <BrainCircuit size={64} className="welcome-icon" />
-                        <h2>Listo para Comenzar</h2>
-                        <p>Escribe un mensaje para comenzar la simulación.</p>
+    if (view === 'chat') {
+        return (
+            <div className="app-container chat-view">
+                <header className="header">
+                    <div className="logo">
+                        <BrainCircuit className="icon-logo" />
+                        <h1>NefroNudge <span className="subtitle">Nudge Testing</span></h1>
+                        {config.patient_name && (
+                            <span style={{
+                                marginLeft: '1rem',
+                                fontSize: '0.9rem',
+                                color: '#94a3b8',
+                                background: 'rgba(255,255,255,0.1)',
+                                padding: '0.25rem 0.75rem',
+                                borderRadius: '999px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <User size={14} />
+                                {config.patient_name}
+                                {currentInteractionTitle && (
+                                    <span style={{ opacity: 0.8, marginLeft: '0.5rem', paddingLeft: '0.5rem', borderLeft: '1px solid rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                                        {currentInteractionTitle}
+                                    </span>
+                                )}
+                            </span>
+                        )}
                     </div>
-                ) : (
-                    messages.filter(msg => msg.role !== 'system').map((msg, idx) => (
-                        <div key={idx} className={`message-row ${msg.role}`}>
-                            <div className="avatar">
-                                {msg.role === 'episode' ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', height: '40px', borderRadius: '50%', background: '#6ee7b7', color: '#0f172a' }}>
-                                        <Clock size={20} />
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        {!soloMode && config.patient_name && (
+                            <button
+                                className="btn-secondary btn-sm"
+                                onClick={simulateNewDay}
+                                title="Simular paso de 1 día"
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                            >
+                                <Clock size={16} />
+                                Nuevo Día
+                            </button>
+                        )}
+                        <button className="btn-icon" onClick={endSession}>
+                            <X size={24} />
+                        </button>
+                    </div>
+                </header>
+
+                <div className="chat-area">
+                    {messages.length === 0 ? (
+                        <div className="welcome-screen">
+                            <BrainCircuit size={64} className="welcome-icon" />
+                            <h2>Listo para Comenzar</h2>
+                            <p>Escribe un mensaje para comenzar la simulación.</p>
+                        </div>
+                    ) : (
+                        messages.filter(msg => msg.role !== 'system').map((rawMsg, idx) => {
+                            let displayThought = rawMsg.thought;
+                            let displayContent = rawMsg.content || "";
+
+                            // Extract thought
+                            const thinkMatch = displayContent.match(/<think>([\s\S]*?)<\/think>/);
+                            if (thinkMatch) {
+                                displayThought = thinkMatch[1].trim();
+                                displayContent = displayContent.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+                            } else if (displayContent.includes('</think>') && !displayContent.includes('<think>')) {
+                                const parts = displayContent.split('</think>');
+                                if (parts.length > 1) {
+                                    displayThought = parts[0].trim();
+                                    displayContent = parts.slice(1).join('</think>').trim();
+                                }
+                            }
+                            const msg = { ...rawMsg, thought: displayThought, content: displayContent };
+
+                            return (
+                                <div key={idx} className={`message-row ${msg.role}`}>
+                                    <div className="avatar">
+                                        {msg.role === 'episode' ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', height: '40px', borderRadius: '50%', background: '#6ee7b7', color: '#0f172a' }}>
+                                                <Clock size={20} />
+                                            </div>
+                                        ) : msg.role === 'user' ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                <User size={20} />
+                                                {config.patient_name && (
+                                                    <span style={{ fontSize: '0.65rem', marginTop: '2px', color: '#94a3b8', maxWidth: '60px', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {config.patient_name}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ) : <Bot size={20} />}
                                     </div>
-                                ) : msg.role === 'user' ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                        <User size={20} />
-                                        {config.patient_name && (
-                                            <span style={{ fontSize: '0.65rem', marginTop: '2px', color: '#94a3b8', maxWidth: '60px', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {config.patient_name}
-                                            </span>
+                                    <div className="message-content">
+                                        {msg.sentiment && (
+                                            <div className="sentiment-bar" style={{
+                                                display: 'flex',
+                                                gap: '8px',
+                                                marginBottom: '6px',
+                                                fontSize: '0.65rem',
+                                                flexWrap: 'wrap',
+                                                background: 'rgba(0,0,0,0.2)',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px'
+                                            }}>
+                                                <span title="Valencia (-5 a +5)" style={{ color: msg.sentiment.valencia < 0 ? '#ef4444' : '#22c55e' }}>
+                                                    Val: {msg.sentiment.valencia}
+                                                </span>
+                                                <span title="Intensidad (0-10)">Int: {msg.sentiment.intensidad}</span>
+                                                <span title="Frustración (0-10)" style={{ color: msg.sentiment.frustracion > 5 ? '#f97316' : 'inherit' }}>Frust: {msg.sentiment.frustracion}</span>
+                                                <span title="Hostilidad (0-10)" style={{ color: msg.sentiment.hostilidad > 5 ? '#ef4444' : 'inherit' }}>Host: {msg.sentiment.hostilidad}</span>
+                                                <span title="Desesperanza (0-10)" style={{ color: msg.sentiment.desesperanza > 5 ? '#a855f7' : 'inherit' }}>Desesp: {msg.sentiment.desesperanza}</span>
+                                                <span title="Autoeficacia (0-10)" style={{ color: msg.sentiment.autoeficacia > 5 ? '#3b82f6' : 'inherit' }}>Autoef: {msg.sentiment.autoeficacia}</span>
+                                            </div>
+                                        )}
+                                        {msg.sentimentLoading && (
+                                            <div style={{ fontSize: '0.7em', color: '#999', marginBottom: '4px', fontStyle: 'italic' }}>
+                                                <Loader2 className="spinner" size={10} style={{ marginRight: '4px', display: 'inline' }} /> Calculando emociones...
+                                            </div>
+                                        )}
+                                        {msg.thought && (
+                                            <details className="thought-display" style={{ marginBottom: '0.5rem' }}>
+                                                <summary style={{
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.75rem',
+                                                    color: 'var(--text-secondary)',
+                                                    userSelect: 'none',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.25rem',
+                                                    opacity: 0.8
+                                                }}>
+                                                    <BrainCircuit size={12} /> Pensamiento
+                                                </summary>
+                                                <div style={{
+                                                    marginTop: '0.5rem',
+                                                    padding: '0.75rem',
+                                                    background: 'rgba(0,0,0,0.2)',
+                                                    borderLeft: '2px solid var(--accent)',
+                                                    fontSize: '0.85rem',
+                                                    color: '#94a3b8',
+                                                    borderRadius: '0 4px 4px 0',
+                                                    fontStyle: 'italic',
+                                                    whiteSpace: 'pre-wrap',
+                                                    fontFamily: 'monospace'
+                                                }}>
+                                                    {msg.thought}
+                                                </div>
+                                            </details>
+                                        )}
+                                        <div className="text ">
+                                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                        </div>
+                                        {msg.suggested_reply_used && (
+                                            <div style={{ fontSize: '0.75rem', color: '#6ee7b7', marginTop: '0.25rem' }}>
+                                                (Respuesta sugerida usada)
+                                            </div>
                                         )}
                                     </div>
-                                ) : <Bot size={20} />}
-                            </div>
-                            <div className="message-content">
-                                {msg.thought && (
-                                    <details className="thought-display" style={{ marginBottom: '0.5rem' }}>
-                                        <summary style={{
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            color: 'var(--text-secondary)',
-                                            userSelect: 'none',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.25rem',
-                                            opacity: 0.8
-                                        }}>
-                                            <BrainCircuit size={12} /> Pensamiento
-                                        </summary>
-                                        <div style={{
-                                            marginTop: '0.5rem',
-                                            padding: '0.75rem',
-                                            background: 'rgba(0,0,0,0.2)',
-                                            borderLeft: '2px solid var(--accent)',
-                                            fontSize: '0.85rem',
-                                            color: '#94a3b8',
-                                            borderRadius: '0 4px 4px 0',
-                                            fontStyle: 'italic',
-                                            whiteSpace: 'pre-wrap',
-                                            fontFamily: 'monospace'
-                                        }}>
-                                            {msg.thought}
-                                        </div>
-                                    </details>
-                                )}
-                                <div className="text">
-                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
                                 </div>
-                                {msg.suggested_reply_used && (
-                                    <div style={{ fontSize: '0.75rem', color: '#6ee7b7', marginTop: '0.25rem' }}>
-                                        (Respuesta sugerida usada)
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))
-                )}
-                {loading === 'psychologist' && (
-                    <div className="message-row assistant">
-                        <div className="avatar"><Bot size={20} /></div>
-                        <div className="message-content">
-                            <div className="typing-indicator">
-                                <Loader2 className="spinner" size={16} /> Pensando ({config.chatbot_model})...
-                            </div>
-                        </div>
-                    </div>
-                )}
-                {loading === 'patient' && (
-                    <div className="message-row assistant">
-                        <div className="avatar"><Bot size={20} /></div>
-                        <div className="message-content">
-                            <div className="typing-indicator">
-                                <Loader2 className="spinner" size={16} /> Generando sugerencia ({config.patient_model})...
-                            </div>
-                        </div>
-                    </div>
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-
-            <div className="input-area">
-                <form onSubmit={sendMessage} className="input-form">
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        placeholder="Escribe tu mensaje..."
-                        disabled={loading}
-                    />
-                    {!soloMode && (
-                        <button
-                            type="button"
-                            onClick={generateSuggestion}
-                            disabled={loading}
-                            title="Generar Sugerencia del Paciente"
-                            className="btn-secondary"
-                            style={{ minWidth: 'auto' }}
-                        >
-                            <BrainCircuit size={20} />
-                        </button>
+                            );
+                        })
                     )}
-                    <button type="submit" disabled={loading || !input.trim()}>
-                        <Send size={20} />
-                    </button>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                        <button type="button" onClick={() => saveInteraction(false)} title="Guardar Actual (Sobreescribir)" className="btn-secondary">
-                            <Save size={20} />
-                        </button>
-                        <button type="button" onClick={() => saveInteraction(true)} title="Bifurcar (Guardar como Nueva Rama)" className="btn-secondary" style={{ color: '#fb923c', borderColor: '#fb923c' }}>
-                            <GitBranch size={20} />
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            {/* New Day Situation Modal - IN CHAT VIEW */}
-            {showNewDayModal && (
-                <div className="modal-overlay" style={{ display: 'flex', zIndex: 99999, background: 'rgba(0,0,0,0.8)' }}>
-                    <div className="modal-content" style={{ maxWidth: '500px' }}>
-                        <div className="modal-header">
-                            <h3>⏰ Simular Nuevo Día</h3>
-                            <button className="btn-close" onClick={() => setShowNewDayModal(false)}>
-                                <X size={20} />
-                            </button>
+                    {loading === 'psychologist' && (
+                        <div className="message-row assistant">
+                            <div className="avatar"><Bot size={20} /></div>
+                            <div className="message-content">
+                                <div className="typing-indicator">
+                                    <Loader2 className="spinner" size={16} /> Pensando ({config.chatbot_model})...
+                                </div>
+                            </div>
                         </div>
-                        <div className="modal-body">
-                            <p style={{ marginBottom: '1rem', color: '#94a3b8' }}>
-                                Describe qué situación específica le ocurrió al paciente durante este día
-                                (ej: "Olvidó tomar la medicación porque tuvo una visita familiar", "Tuvo náuseas después de tomar las pastillas").
-                            </p>
-                            <p style={{ marginBottom: '1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
-                                <strong>Nota:</strong> Si dejas el campo vacío, el paciente mencionará situaciones generales relacionadas con su perfil.
-                            </p>
-                            <textarea
-                                value={newDaySituation}
-                                onChange={(e) => setNewDaySituation(e.target.value)}
-                                placeholder="Ej: Tuvo dolor de cabeza y olvidó tomar las pastillas del mediodía..."
-                                rows={5}
-                                style={{
-                                    width: '100%',
-                                    padding: '0.75rem',
-                                    borderRadius: '0.5rem',
-                                    border: '1px solid #444',
-                                    background: '#1a1a1a',
-                                    color: '#fff',
-                                    fontSize: '0.95rem',
-                                    resize: 'vertical'
-                                }}
-                            />
+                    )}
+                    {loading === 'patient' && (
+                        <div className="message-row assistant">
+                            <div className="avatar"><Bot size={20} /></div>
+                            <div className="message-content">
+                                <div className="typing-indicator">
+                                    <Loader2 className="spinner" size={16} /> Generando sugerencia ({config.patient_model})...
+                                </div>
+                            </div>
                         </div>
-                        <div className="modal-actions">
-                            <button
-                                className="btn-secondary"
-                                onClick={() => setShowNewDayModal(false)}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                className="btn-primary"
-                                onClick={applyNewDay}
-                            >
-                                <Clock size={16} style={{ marginRight: '0.5rem' }} />
-                                Aplicar Nuevo Día
-                            </button>
-                        </div>
-                    </div>
+                    )}
+                    <div ref={messagesEndRef} />
                 </div>
-            )}
-        </div>
-    );
+
+                <div className="input-area">
+                    <form onSubmit={sendMessage} className="input-form">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            placeholder="Escribe tu mensaje..."
+                            disabled={loading}
+                        />
+                        {!soloMode && (
+                            <button
+                                type="button"
+                                onClick={generateSuggestion}
+                                disabled={loading}
+                                title="Generar Sugerencia del Paciente"
+                                className="btn-secondary"
+                                style={{ minWidth: 'auto' }}
+                            >
+                                <BrainCircuit size={20} />
+                            </button>
+                        )}
+                        <button type="submit" disabled={loading || !input.trim()}>
+                            <Send size={20} />
+                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                            <button type="button" onClick={() => saveInteraction(false)} title="Guardar Actual (Sobreescribir)" className="btn-secondary">
+                                <Save size={20} />
+                            </button>
+                            <button type="button" onClick={() => saveInteraction(true)} title="Bifurcar (Guardar como Nueva Rama)" className="btn-secondary" style={{ color: '#fb923c', borderColor: '#fb923c' }}>
+                                <GitBranch size={20} />
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                {/* New Day Situation Modal */}
+                {showNewDayModal && (
+                    <div className="modal-overlay" style={{ display: 'flex', zIndex: 99999, background: 'rgba(0,0,0,0.8)' }}>
+                        <div className="modal-content" style={{ maxWidth: '500px' }}>
+                            <div className="modal-header">
+                                <h3>⏰ Simular Nuevo Día</h3>
+                                <button className="btn-close" onClick={() => setShowNewDayModal(false)}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="modal-body">
+                                <p style={{ marginBottom: '1rem', color: '#94a3b8' }}>
+                                    Describe qué situación específica le ocurrió al paciente durante este día
+                                    (ej: "Olvidó tomar la medicación porque tuvo una visita familiar", "Tuvo náuseas después de tomar las pastillas").
+                                </p>
+                                <p style={{ marginBottom: '1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
+                                    <strong>Nota:</strong> Si dejas el campo vacío, el paciente mencionará situaciones generales relacionadas con su perfil.
+                                </p>
+                                <textarea
+                                    value={newDaySituation}
+                                    onChange={(e) => setNewDaySituation(e.target.value)}
+                                    placeholder="Ej: Tuvo dolor de cabeza y olvidó tomar las pastillas del mediodía..."
+                                    rows={5}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.75rem',
+                                        borderRadius: '0.5rem',
+                                        border: '1px solid #444',
+                                        background: '#1a1a1a',
+                                        color: '#fff',
+                                        fontSize: '0.95rem',
+                                        resize: 'vertical'
+                                    }}
+                                />
+                            </div>
+                            <div className="modal-actions">
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setShowNewDayModal(false)}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    onClick={applyNewDay}
+                                >
+                                    <Clock size={16} style={{ marginRight: '0.5rem' }} />
+                                    Aplicar Nuevo Día
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Notification Toast */}
+                {notification && (
+                    <div style={{
+                        position: 'fixed',
+                        top: '20px',
+                        right: '20px',
+                        background: notification.type === 'error' ? '#ef4444' : '#10b981',
+                        color: 'white',
+                        padding: '1rem',
+                        borderRadius: '0.5rem',
+                        zIndex: 2147483647,
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                        animation: 'fadeIn 0.3s ease-out',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        fontWeight: '500'
+                    }}>
+                        {notification.type === 'error' ? <X size={20} /> : <Check size={20} />}
+                        {notification.message}
+                    </div>
+                )}
+
+
+
+                {/* Exit Confirmation Modal */},
+                {showExitConfirmation && (
+                    <div className="modal-overlay" style={{
+                        zIndex: 2147483647,
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        background: 'rgba(0,0,0,0.85)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        pointerEvents: 'all'
+                    }}>
+                        <div className="modal-content" style={{ maxWidth: '400px', border: '1px solid #555', background: '#1e293b', boxShadow: '0 0 50px rgba(0,0,0,0.8)' }}>
+                            <div className="modal-header">
+                                <h3>¿Terminar Sesión?</h3>
+                                <button className="btn-close" onClick={() => setShowExitConfirmation(false)}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <div style={{ padding: '1.5rem 0', color: '#ccc' }}>
+                                ¿Estás seguro de que quieres terminar esta sesión? Los mensajes se borrarán.
+                            </div>
+                            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setShowExitConfirmation(false)}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    style={{ background: '#ef4444', borderColor: '#ef4444' }}
+                                    onClick={performEndSession}
+                                >
+                                    Salir sin Guardar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    return null;
 }
 
 export default App;

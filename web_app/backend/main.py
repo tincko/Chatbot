@@ -73,6 +73,7 @@ class SuggestionRequest(BaseModel):
 
 class SuggestionResponse(BaseModel):
     suggested_reply: str
+    thought: Optional[str] = None
 
 class GenerateProfileRequest(BaseModel):
     model: str
@@ -121,7 +122,7 @@ def chat_endpoint(req: ChatRequest):
 @app.post("/api/suggest", response_model=SuggestionResponse)
 def suggest_endpoint(req: SuggestionRequest):
     try:
-        suggestion = orchestrator.generate_suggestion_only(
+        suggestion_data = orchestrator.generate_suggestion_only(
             req.patient_model,
             req.history,
             req.user_message,
@@ -134,7 +135,10 @@ def suggest_endpoint(req: SuggestionRequest):
             req.presence_penalty,
             req.frequency_penalty
         )
-        return SuggestionResponse(suggested_reply=suggestion)
+        return SuggestionResponse(
+            suggested_reply=suggestion_data['content'],
+            thought=suggestion_data['thought']
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -607,6 +611,77 @@ def analysis_chat_endpoint(req: AnalysisChatRequest, db: Session = Depends(get_d
         
     except Exception as e:
         print(f"Error in analysis chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AnalyzeSentimentRequest(BaseModel):
+    message: str
+    model: Optional[str] = None
+
+@app.post("/api/analyze_sentiment")
+def analyze_sentiment_endpoint(req: AnalyzeSentimentRequest):
+    try:
+        # Use a model from the request or fallback (Orchestrator handles default)
+        result = orchestrator.analyze_sentiment(req.message, req.model)
+        return result if result else {}
+    except Exception as e:
+        print(f"Error in sentiment endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class BatchAnalyzeRequest(BaseModel):
+    filenames: List[str]
+    model: Optional[str] = None
+
+@app.post("/api/batch_analyze_sentiment")
+def batch_analyze_sentiment_endpoint(req: BatchAnalyzeRequest, db: Session = Depends(get_db)):
+    """
+    Analyzes sentiment for ALL user messages in the specified interactions
+    that do not yet have sentiment analysis.
+    """
+    results = {
+        "processed": 0,
+        "analyzed": 0,
+        "errors": 0,
+        "details": []
+    }
+    
+    try:
+        # Get interactions from DB
+        # We need the full interaction object to get messages
+        # Using existing helper but we might need to query Message objects directly if we want to save purely
+        # DB Logic: Get interactions, iterate messages, update if role='user' and sentiment is None
+        
+        from database import Interaction, Message
+        
+        interactions = db.query(Interaction).filter(Interaction.filename.in_(req.filenames)).all()
+        
+        for interaction in interactions:
+            results["processed"] += 1
+            chatbot_model = interaction.chatbot_model or "mental_llama3.1-8b-mix-sft"
+            target_model = req.model if req.model else chatbot_model
+            
+            updated = False
+            for msg in interaction.messages:
+                if msg.role == 'user' and not msg.sentiment:
+                    # Analyze!
+                    print(f"Analyzing sentiment for msg {msg.id} in {interaction.filename}...")
+                    try:
+                        sentiment = orchestrator.analyze_sentiment(msg.content, model=target_model)
+                        if sentiment:
+                            msg.sentiment = sentiment
+                            results["analyzed"] += 1
+                            updated = True
+                    except Exception as e:
+                        print(f"Error analyzing msg {msg.id}: {e}")
+                        results["errors"] += 1
+                        results["details"].append(f"Error in {interaction.filename}: {str(e)}")
+            
+            if updated:
+                db.commit()
+                
+        return results
+
+    except Exception as e:
+        print(f"Error in batch sentiment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

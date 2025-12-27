@@ -1,6 +1,7 @@
 import requests
 import json
 import re
+import html
 import os
 import ast
 
@@ -46,6 +47,14 @@ class DualLLMOrchestrator:
             raise Exception(f"LLM Call Failed: {error_msg}")
 
     def _extract_thought_and_response(self, text: str) -> dict:
+        """
+        Extracts thinking blocks and cleaning artifacts. 
+        Returns a dict: {'thought': str|None, 'content': str}
+        """
+        if not text:
+             return {"thought": None, "content": ""}
+             
+        text = html.unescape(text) # Handle encoded tags
         """
         Extracts thinking blocks and cleaning artifacts. 
         Returns a dict: {'thought': str|None, 'content': str}
@@ -326,8 +335,9 @@ class DualLLMOrchestrator:
         
         # Clean up any remaining artifacts
         suggested_reply = suggested_reply.strip()
-
-        return suggested_reply
+        
+        suggested_reply_data['content'] = suggested_reply
+        return suggested_reply_data
 
     def list_models(self):
         try:
@@ -591,3 +601,68 @@ class DualLLMOrchestrator:
             messages_log.append({"role": "assistant", "content": psychologist_response})
             
         return messages_log
+
+    def analyze_sentiment(self, text, model=None):
+        """
+        Analyzes the sentiment/psychological parameters of a patient's message.
+        """
+        # Use a lightweight or standard model for this task. Defaults to chatbot model if not specified.
+        # We can use the same model as the chatbot for consistency, or a smarter one if available.
+        target_model = model if model else DEFAULT_MODEL_CHATBOT
+        
+        system_prompt = (
+            "Eres un experto en psicometría y análisis de sentimiento clínico. "
+            "Tu tarea es analizar el siguiente mensaje de un paciente renal y puntuar los siguientes parámetros "
+            "en una escala del 0 al 10 (donde 0 es nada/muy bajo y 10 es máximo/muy alto).\n"
+            "También evalúa la valencia emocional de -5 (muy negativa) a +5 (muy positiva).\n\n"
+            "Parámetros a evaluar:\n"
+            "- valencia: -5 a +5\n"
+            "- intensidad: 0 a 10 (intensidad de la emoción expresada)\n"
+            "- frustracion: 0 a 10\n"
+            "- hostilidad: 0 a 10\n"
+            "- desesperanza: 0 a 10\n"
+            "- autoeficacia: 0 a 10 (creencia en su propia capacidad de manejar su salud)\n\n"
+            "Salida OBLIGATORIA: Un único objeto JSON con estas claves. Sin explicaciones ni texto extra."
+        )
+        
+        user_prompt = f"Mensaje del paciente: \"{text}\""
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        try:
+            response_text = self._call_llm(
+                target_model, 
+                messages, 
+                temperature=0.1, # Low temp for deterministic JSON
+                max_tokens=150
+            )
+
+
+            # Handle potential thinking blocks if the model puts them in (though prompts asks for JSON only)
+            extracted = self._extract_thought_and_response(response_text)
+            content = extracted['content']
+            
+            # Clean possible markdown
+            content = content.replace("```json", "").replace("```", "").strip()
+            
+            # Parse JSON
+            try:
+                data = json.loads(content)
+                return data
+            except json.JSONDecodeError:
+                # Fallback: try to finding JSON in text
+                match = re.search(r'\{.*\}', content, re.DOTALL)
+                if match:
+                    try:
+                        return json.loads(match.group(0))
+                    except:
+                        pass
+                print(f"Failed to parse sentiment JSON: {content}")
+                return None
+                
+        except Exception as e:
+            print(f"Error in sentiment analysis: {e}")
+            return None

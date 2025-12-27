@@ -165,7 +165,8 @@ def save_interaction(db: Session, interaction_data: Dict[str, Any]) -> Dict[str,
             role=msg_data.get('role'),
             content=msg_data.get('content'),
             thought=msg_data.get('thought'),
-            suggested_reply_used=msg_data.get('suggested_reply_used', False)
+            suggested_reply_used=msg_data.get('suggested_reply_used', False),
+            sentiment=msg_data.get('sentiment')
         )
         db.add(message)
     
@@ -217,6 +218,12 @@ def delete_interaction_by_filename(db: Session, filename: str):
     """Delete interaction by filename"""
     interaction = db.query(Interaction).filter(Interaction.filename == filename).first()
     if interaction:
+        # Unlink from patients to prevent FK constraint errors
+        patients = db.query(Patient).filter(Patient.last_interaction_id == interaction.id).all()
+        for p in patients:
+            p.last_interaction_id = None
+            p.last_interaction_file = None
+            
         db.delete(interaction)
         db.commit()
 
@@ -273,7 +280,8 @@ def interaction_to_dict(interaction: Interaction) -> Dict[str, Any]:
             'role': msg.role,
             'content': msg.content,
             'thought': msg.thought,
-            'suggested_reply_used': msg.suggested_reply_used
+            'suggested_reply_used': getattr(msg, 'suggested_reply_used', False),
+            'sentiment': getattr(msg, 'sentiment', None)
         }
         for msg in sorted(interaction.messages, key=lambda m: m.order)
     ]
