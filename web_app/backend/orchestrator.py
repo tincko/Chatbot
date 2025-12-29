@@ -55,51 +55,60 @@ class DualLLMOrchestrator:
              return {"thought": None, "content": ""}
              
         text = html.unescape(text) # Handle encoded tags
-        """
-        Extracts thinking blocks and cleaning artifacts. 
-        Returns a dict: {'thought': str|None, 'content': str}
-        """
         thought = None
         cleaned_text = text
 
-        # 1. Extract standard <think> blocks
-        think_match = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
+        # 1. Try standard <think> blocks first (Most reliable, handling optional spaces)
+        think_match = re.search(r"<\s*think\s*>(.*?)<\s*/\s*think\s*>", text, flags=re.DOTALL | re.IGNORECASE)
         if think_match:
             thought = think_match.group(1).strip()
             # Remove the think block from the text
-            cleaned_text = re.sub(r"<think>.*?</think>", "", cleaned_text, flags=re.DOTALL)
+            cleaned_text = re.sub(r"<\s*think\s*>.*?<\s*/\s*think\s*>", "", cleaned_text, flags=re.DOTALL | re.IGNORECASE)
         
-        # 1.5 Extract <thought> blocks if <think> wasn't found
+        # 2. If no <think>, try <thought> blocks
         if not thought:
             thought_match = re.search(r"<thought>(.*?)</thought>", text, flags=re.DOTALL)
             if thought_match:
                 thought = thought_match.group(1).strip()
                 cleaned_text = re.sub(r"<thought>.*?</thought>", "", cleaned_text, flags=re.DOTALL)
-            elif "<thought>" in text: # Handle unclosed <thought>
+                
+            # 3. If still no thought, check for unclosed/malformed tags
+            elif "<thought>" in text: # Unclosed <thought>
                 parts = text.split("<thought>", 1)
                 if len(parts) > 1:
                     thought = parts[1].strip()
                     cleaned_text = parts[0].strip()
-        else:
-            # Handle unclosed <think> tag (at start)
-            if "<think>" in text:
-                # If <think> is present but no closing </think>, assume everything after it is thought
-                parts = text.split("<think>", 1) # Split only on the first occurrence
+            
+            elif "<think>" in text: # Unclosed <think> (start only)
+                parts = text.split("<think>", 1)
                 if len(parts) > 1:
                     thought = parts[1].strip()
                     cleaned_text = parts[0].strip()
             
-            # Handle unclosed </think> (at end, missing start)
-            # This usually means the thought was at the start but the tag was cut or malformed
-            # We extract everything before </think> as thought, if no <think> was found
-            if "</think>" in text and "<think>" not in text:
+            elif "</think>" in text: # Unclosed </think> (end only, missing start)
                  split_match = re.split(r"</think>", text, flags=re.DOTALL, maxsplit=1)
                  if len(split_match) > 1:
                      thought = split_match[0].strip()
                      cleaned_text = split_match[1]
 
-        # 2. Cleanup other artifacts from cleaned_text (same as previous logic)
-        
+        # 4. Fallback: Check for "Thought:" headers if still no thought
+        if not thought:
+             # Look for "Thought:" or "Reasoning:" at the very beginning
+             header_match = re.match(r"^(?:Thought|Reasoning|Pensamiento|Análisis):", cleaned_text, flags=re.IGNORECASE | re.MULTILINE)
+             if header_match:
+                 # It starts with a header. We assume the thought goes until "Response:" or end of first paragraph/block
+                 split_match = re.split(r"(?:^|\n)(?:Response|Answer|Respuesta|Contestación):", cleaned_text, flags=re.IGNORECASE)
+                 if len(split_match) > 1:
+                     thought = re.sub(r"^(?:Thought|Reasoning|Pensamiento|Análisis):\s*", "", split_match[0], flags=re.IGNORECASE | re.MULTILINE).strip()
+                     cleaned_text = split_match[-1]
+                 else:
+                     # If no explicit "Response:", maybe it's just one block? checking for double newline separator
+                     parts = re.split(r"\n\s*\n", cleaned_text, maxsplit=1)
+                     if len(parts) > 1:
+                         thought = re.sub(r"^(?:Thought|Reasoning|Pensamiento|Análisis):\s*", "", parts[0], flags=re.IGNORECASE | re.MULTILINE).strip()
+                         cleaned_text = parts[1]
+
+        # 5. Cleanup artifacts
         # Remove empty thinking artifacts left over
         cleaned_text = re.sub(r"<think>.*$", "", cleaned_text, flags=re.DOTALL)
 
@@ -115,24 +124,80 @@ class DualLLMOrchestrator:
         cleaned_text = re.sub(r"<｜.*?｜>Human:", "", cleaned_text, flags=re.IGNORECASE)
         cleaned_text = re.sub(r"<｜.*?｜>", "", cleaned_text)
 
-        # Handle "Thought: ... Response: ..." pattern if we haven't found a thought yet
+        # Final check: Is content empty but we have a thought?
+        final_content = cleaned_text.strip()
+        if not final_content and thought:
+            # Heuristic: The model might have been cut off or put everything in thought
+            final_content = "[El modelo generó un pensamiento interno pero no completó la respuesta externa.]"
+            
+        # FORCE DISPLAY: If no thought found, provide a placeholder so UI shows the box
         if not thought:
-            split_match = re.split(r"(?:^|\n)(?:Response|Answer|Respuesta|Contestación):\s*", cleaned_text, flags=re.IGNORECASE)
-            if len(split_match) > 1:
-                # First part might be the thought
-                potential_thought = split_match[0]
-                # Heuristic: check if it starts with "Thought:"
-                if re.match(r"(?:^|\n)Thought:", potential_thought, re.IGNORECASE):
-                    thought = re.sub(r"^Thought:\s*", "", potential_thought, flags=re.IGNORECASE).strip()
-                cleaned_text = split_match[-1]
+            thought = "[No se detectó razonamiento interno explícito en esta respuesta]"
+
+        return {"thought": thought, "content": final_content}
+
+    def _optimize_system_prompt(self, base_prompt, model_name):
+        """
+        Adapta el prompt del sistema con instrucciones técnicas específicas según el modelo detectado.
+        Define explícitamente cómo separar 'Pensamiento' de 'Respuesta' según la arquitectura.
+        """
+        if not model_name:
+            return base_prompt
+            
+        optimized_prompt = base_prompt
+        model_name_lower = model_name.lower()
+
+        # --- TIPO 1: MODELOS DE RAZONAMIENTO "DENSOS" (LLAMA / DEEPSEEK / MIX / QWEN) ---
+        # Estos modelos están entrenados con tokens de formato XML explícito.
+        if any(x in model_name_lower for x in ["llama", "mix", "deepseek", "qwen", "mental"]):
+             specific_instructions = (
+                 "\n\n=== PROTOCOLO DE PENSAMIENTO (ENGINE DE ALTO RAZONAMIENTO) ===\n"
+                 "1. FORMATO OBLIGATORIO: Tu respuesta DEBE tener dos partes separadas exactamente así:\n"
+                 "   <think>\n"
+                 "   [Aquí escribes tu razonamiento interno, análisis COM-B, etc.]\n"
+                 "   </think>\n"
+                 "   [Aquí escribes tu respuesta final al usuario]\n"
+                 "2. ANTI-ECO: No repitas el mensaje del usuario fuera de las etiquetas <think>.\n"
+                 "3. ROL: Mantén el personaje clínico sin meta-comentarios."
+             )
+             optimized_prompt += specific_instructions
+             
+        # --- TIPO 2: MODELOS DE INSTRUCCIÓN GENERAL (GPT / OPENAI) ---
+        # Estos modelos siguen mejor instrucciones de lenguaje natural estructurado ("Headers").
+        elif "gpt" in model_name_lower:
+             specific_instructions = (
+                 "\n\n=== PROTOCOLO DE PENSAMIENTO (GPT ENGINE) ===\n"
+                 "1. ESTRUCTURA DE RESPUESTA: Separa tu proceso mental de tu respuesta final usando estos encabezados exactos:\n"
+                 "   Thought:\n"
+                 "   [Tu análisis interno y estrategia aquí]\n\n"
+                 "   Response:\n"
+                 "   [Tu mensaje final para el paciente aquí]\n"
+                 "2. NATURALIDAD: El contenido de 'Response' debe ser cálido y humano, no robótico."
+             )
+             optimized_prompt += specific_instructions
+             
+        # --- TIPO 3: MODELOS CONCISOS / OTROS (MISTRAL / GEMMA) ---
+        # Prefieren XML simple pero instrucciones de brevedad.
+        elif any(x in model_name_lower for x in ["mistral", "mixtral", "gemma"]):
+             specific_instructions = (
+                 "\n\n=== PROTOCOLO DE PENSAMIENTO (MISTRAL ENGINE) ===\n"
+                 "1. FORMATO: Usa etiquetas XML para aislar tu pensamiento:\n"
+                 "   <think> [Razonamiento breve] </think>\n"
+                 "   [Respuesta final]\n"
+                 "2. CONCISIÓN: Mantén el pensamiento directo y al grano."
+             )
+             optimized_prompt += specific_instructions
+             
+        # --- DEFAULT / GENÉRICO ---
+        # Si no reconocemos el modelo, pedimos XML estándar por seguridad (compatible con el parser).
         else:
-            # If a thought was already extracted, ensure the cleaned_text is just the response part
-            split_match = re.split(r"(?:^|\n)(?:Response|Answer|Respuesta|Contestación):\s*", cleaned_text, flags=re.IGNORECASE)
-            if len(split_match) > 1:
-                cleaned_text = split_match[-1]
+             specific_instructions = (
+                 "\n\n=== INSTRUCCIONES DE FORMATO ===\n"
+                 "Por favor, piensa antes de responder usando etiquetas <think>...</think> para tu análisis interno."
+             )
+             optimized_prompt += specific_instructions
 
-
-        return {"thought": thought, "content": cleaned_text.strip()}
+        return optimized_prompt
 
     def get_patient_suggestion(self, patient_model, history, psychologist_message, system_prompt=None, temperature=0.7, top_p=0.9, top_k=40, max_tokens=600, presence_penalty=0.1, frequency_penalty=0.2):
         """
@@ -164,6 +229,9 @@ class DualLLMOrchestrator:
         )
         
         actual_prompt = system_prompt if system_prompt else default_prompt
+        
+        # Optimización dinámica del prompt según el modelo elegido
+        actual_prompt = self._optimize_system_prompt(actual_prompt, patient_model)
 
         messages = [{"role": "system", "content": actual_prompt}]
         
@@ -180,8 +248,15 @@ class DualLLMOrchestrator:
         # 1. Add preserved system messages (e.g. "EVENTO QUE TE OCURRIÓ")
         # Optimization: Only keep the most recent "New Day" event to avoid confusion
         final_system_msgs = []
-        new_day_msgs = [m for m in system_msgs_in_history if "NUEVO DÍA" in m.get('content', '').upper() or "EVENTO QUE TE OCURRIÓ" in m.get('content', '').upper()]
-        other_system_msgs = [m for m in system_msgs_in_history if m not in new_day_msgs]
+        
+        # Helper to check if a message is a "New Day" event
+        def is_new_day_msg(m):
+            role_ok = m.get('role') in ['system', 'episode']
+            content = m.get('content', '').upper()
+            return role_ok and ("NUEVO DÍA" in content or "EVENTO QUE TE OCURRIÓ" in content or "EPISODIO" in content)
+
+        new_day_msgs = [m for m in history if is_new_day_msg(m)]
+        other_system_msgs = [m for m in system_msgs_in_history if not is_new_day_msg(m)]
         
         # Add non-event system messages
         final_system_msgs.extend(other_system_msgs)
@@ -213,12 +288,11 @@ class DualLLMOrchestrator:
         # Add the psychologist's latest message as the latest input from the 'user' (interlocutor)
         messages.append({"role": "user", "content": psychologist_message})
         
-        # 3. APPEND REMINDER IF EXISTS (to force attention)
+        # 3. INJECT REMINDER INTO LAST MESSAGE (to force attention)
         if new_day_msgs:
-             messages.append({
-                "role": "system", 
-                "content": f"(Instrucción oculta de consistencia): Recuerda actuar según el evento reciente: '{latest_event_content}'. No lo ignores."
-            })
+             # Instead of a separate system message, we attach it to the immediate context
+             # This forces the model to 'see' it as the current state of affairs
+             messages[-1]['content'] += f"\n\n[EVENTO QUE ACABA DE OCURRIRME: {latest_event_content}. DEBO MENCIONAR ESTO EN MI RESPUESTA.]"
 
         print(f"--- Calling Patient Helper ({patient_model}) ---")
         print(f"System Prompt: {actual_prompt[:100]}...")
@@ -247,6 +321,9 @@ class DualLLMOrchestrator:
         default_psico_prompt = (
             "Sos un asistente especializado en salud conductual y trasplante renal.\n"
             "Actuás como un asistente en salud renal que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\n"
+            "IMPORTANTE:\n"
+            "- Mantén tu rol de asistente profesional en todo momento.\n"
+            "- Responde directamente a la inquietud del paciente, sin repetir todo lo que él dijo.\n\n"
             "Tu tarea en cada turno es:\n"
             "1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n"
             "2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\n"
@@ -272,6 +349,9 @@ class DualLLMOrchestrator:
         )
         
         actual_psico_prompt = psychologist_system_prompt if psychologist_system_prompt else default_psico_prompt
+        
+        # Optimización dinámica del prompt según el modelo elegido
+        actual_psico_prompt = self._optimize_system_prompt(actual_psico_prompt, chatbot_model)
 
         if context:
             actual_psico_prompt += f"\n\n{context}"
@@ -536,10 +616,11 @@ class DualLLMOrchestrator:
         history = []
         messages_log = []
         
-        # Initial trigger: Psychologist greets (or we could have patient start)
-        # Let's have a standard greeting to kick it off, but NOT add it to history yet if we want the patient to 'start' real talk.
-        # Actually, let's assume the session starts with the Psychologist saying hello.
+        # Optimize prompts dynamically
+        final_chatbot_prompt = self._optimize_system_prompt(psychologist_system_prompt, chatbot_model)
+        final_patient_prompt = self._optimize_system_prompt(patient_system_prompt, patient_model)
         
+        # Initial greeting
         last_psychologist_msg = "Hola. Soy tu asistente en salud renal virtual. ¿Cómo te sentís hoy?"
         messages_log.append({"role": "assistant", "content": last_psychologist_msg})
         
@@ -548,14 +629,8 @@ class DualLLMOrchestrator:
         for i in range(turns):
             # 1. Patient Responds
             print(f"Turn {i+1}: Patient responding...")
-            # We use generate_suggestion_only logic but adapted
-            # The patient 'user' needs to see the psychologist 'assistant' message
             
-            # Construct patient history for the patient model
-            # The patient model sees: System Prompt + History (where User=Psychologist, Assistant=Patient)
-            # But our 'history' list is standard (User=Patient, Assistant=Psychologist)
-            # So we need to invert roles for the patient model input
-            
+            # Construct patient history (Inverted roles: User=Psychologist, Assistant=Patient)
             patient_history_input = []
             for msg in history:
                 if msg['role'] == 'user': # Patient said this
@@ -563,10 +638,9 @@ class DualLLMOrchestrator:
                 else: # Psychologist said this
                     patient_history_input.append({"role": "user", "content": msg['content']})
             
-            # Add the latest psychologist message
             patient_history_input.append({"role": "user", "content": last_psychologist_msg})
             
-            patient_messages = [{"role": "system", "content": patient_system_prompt}] + patient_history_input
+            patient_messages = [{"role": "system", "content": final_patient_prompt}] + patient_history_input
             
             patient_response_data = self._extract_thought_and_response(self._call_llm(
                 patient_model,
@@ -574,16 +648,29 @@ class DualLLMOrchestrator:
                 temperature=kwargs.get('patient_temperature', 0.7),
                 max_tokens=kwargs.get('patient_max_tokens', 600)
             ))
-            patient_response = patient_response_data['content']
             
-            # Add to main history and log
-            history.append({"role": "user", "content": patient_response})
-            messages_log.append({"role": "user", "content": patient_response})
+            # Analyze Sentiment of the patient's clean response
+            sentiment_data = None
+            try:
+                sentiment_data = self.analyze_sentiment(patient_response_data['content'], model=chatbot_model)
+            except Exception as e:
+                print(f"Error analyzing sentiment in simulation: {e}")
+
+            # Add to log with thought and sentiment
+            messages_log.append({
+                "role": "user", 
+                "content": patient_response_data['content'],
+                "thought": patient_response_data['thought'],
+                "sentiment": sentiment_data
+            })
+            
+            # Add to history (standard format for next turn)
+            history.append({"role": "user", "content": patient_response_data['content']})
             
             # 2. Psychologist Responds
             print(f"Turn {i+1}: Psychologist responding...")
             
-            psico_messages = [{"role": "system", "content": psychologist_system_prompt}] + history
+            psico_messages = [{"role": "system", "content": final_chatbot_prompt}] + history
             
             psychologist_response_data = self._extract_thought_and_response(self._call_llm(
                 chatbot_model,
@@ -592,13 +679,16 @@ class DualLLMOrchestrator:
                 max_tokens=kwargs.get('psychologist_max_tokens', 600)
             ))
             
-            psychologist_response = psychologist_response_data['content']
+            last_psychologist_msg = psychologist_response_data['content']
             
-            last_psychologist_msg = psychologist_response
+            # Add to log with thought
+            messages_log.append({
+                "role": "assistant", 
+                "content": psychologist_response_data['content'],
+                "thought": psychologist_response_data['thought']
+            })
             
-            # Add to main history and log
-            history.append({"role": "assistant", "content": psychologist_response})
-            messages_log.append({"role": "assistant", "content": psychologist_response})
+            history.append({"role": "assistant", "content": psychologist_response_data['content']})
             
         return messages_log
 

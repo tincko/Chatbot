@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
-const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un asistente en salud renal que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\nTu tarea en cada turno es:\n1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\nINSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\nFORMATO DE SALIDA:\n<think>\n[Aquí tu análisis interno del modelo COM-B y estrategia]\n</think>\n[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\nESTILO DEL MENSAJE AL PACIENTE:\n- Usá un lenguaje cálido y cercano ('vos').\n- Frases cortas, sin tecnicismos ni jerga clínica.\n- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n- Tono de guía que acompaña, no de autoridad.\n\nEjemplo de salida ideal:\n<think>\nEl paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n</think>\nEntiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!";
+const DEFAULT_PSYCHOLOGIST_PROMPT = "Sos un asistente especializado en salud conductual y trasplante renal.\nActuás como un asistente en salud renal que usa internamente el modelo COM-B (Capacidad – Oportunidad – Motivación).\n\nIMPORTANTE:\n- Mantén tu rol de asistente profesional en todo momento.\n- Responde directamente a la inquietud del paciente, sin repetir todo lo que él dijo.\n\nTu tarea en cada turno es:\n1. ANALIZAR internamente qué le pasa al paciente (capacidad, oportunidad, motivación).\n2. RESPONDERLE con UN ÚNICO mensaje breve (1 a 3 líneas), cálido, empático y claro.\n\nINSTRUCCIÓN DE PENSAMIENTO (OBLIGATORIO):\n- Si necesitas razonar o analizar la situación, DEBES hacerlo dentro de un bloque <think>...</think>.\n- Todo lo que escribas DENTRO de <think> será invisible para el usuario.\n- Todo lo que escribas FUERA de <think> será el mensaje que recibirá el paciente.\n\nFORMATO DE SALIDA:\n<think>\n[Aquí tu análisis interno del modelo COM-B y estrategia]\n</think>\n[Aquí tu mensaje final al paciente, sin títulos ni explicaciones extra]\n\nESTILO DEL MENSAJE AL PACIENTE:\n- Usá un lenguaje cálido y cercano ('vos').\n- Frases cortas, sin tecnicismos ni jerga clínica.\n- Incluye un micro-nudge práctico (recordatorio, idea sencilla, refuerzo positivo).\n- Tono de guía que acompaña, no de autoridad.\n\nEjemplo de salida ideal:\n<think>\nEl paciente muestra baja motivación por cansancio. Oportunidad reducida por horarios laborales. Estrategia: validar cansancio y proponer recordatorio simple.\n</think>\nEntiendo que estés cansado, es normal. Quizás poner una alarma en el celular te ayude a no tener que estar pendiente de la hora. ¡Probemos eso hoy!";
 
 const DEFAULT_ANALYSIS_PROMPT = "Sos un supervisor clínico experto en trasplante renal y salud conductual.\nTu tarea es analizar las transcripciones de sesiones simuladas entre un Asistente en salud renal (IA) y un Paciente (IA).\nDebes evaluar la calidad de la intervención del asistente en salud renal, la coherencia del paciente y el progreso general.\n\nEstructura tu análisis en los siguientes puntos:\n1. RESUMEN GENERAL: Breve descripción de los temas tratados.\n2. EVALUACIÓN DEL PSICÓLOGO: ¿Fue empático? ¿Usó estrategias claras? ¿Respetó el modelo COM-B?\n3. EVALUACIÓN DEL PACIENTE: ¿Fue realista? ¿Mantuvo la coherencia con su perfil?\n4. CONCLUSIONES Y RECOMENDACIONES: ¿Qué se podría mejorar en el prompt o configuración?";
 
@@ -42,7 +42,7 @@ function App() {
     const [selectedInteraction, setSelectedInteraction] = useState(null);
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
-    const [analysisModel, setAnalysisModel] = useState('');
+    const [analysisModel, setAnalysisModel] = useState(localStorage.getItem('lastAnalysisModel') || '');
     const [analysisPrompt, setAnalysisPrompt] = useState(DEFAULT_ANALYSIS_PROMPT);
     const [historyChatPrompt, setHistoryChatPrompt] = useState(DEFAULT_HISTORY_CHAT_PROMPT);
     const [selectedInteractionIds, setSelectedInteractionIds] = useState(new Set());
@@ -130,8 +130,21 @@ function App() {
             if (res.ok) {
                 const data = await res.json();
                 setModels(data.models);
-                if (data.models.length > 0 && !config.chatbot_model) {
-                    setConfig(prev => ({ ...prev, chatbot_model: data.models[0] }));
+                if (data.models.length > 0) {
+                    if (!config.chatbot_model) {
+                        setConfig(prev => ({ ...prev, chatbot_model: data.models[0] }));
+                    }
+
+                    // Ensure analysisModel is valid
+                    setAnalysisModel(prev => {
+                        if (prev && data.models.includes(prev)) return prev;
+                        const saved = localStorage.getItem('lastAnalysisModel');
+                        if (saved && data.models.includes(saved)) return saved;
+                        // Default to last model if available (often more powerful), else first
+                        const defaultModel = data.models[data.models.length - 1];
+                        localStorage.setItem('lastAnalysisModel', defaultModel);
+                        return defaultModel;
+                    });
                 }
             }
         } catch (error) {
@@ -1080,7 +1093,7 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                     psychologist_system_prompt: config.psychologist_system_prompt,
                     chatbot_model: config.chatbot_model,
                     patient_model: config.patient_model,
-                    turns: 2, // Reduced to 2 turns for maximum stability
+                    turns: 5, // Increased to 5 for better conversation testing
                     psychologist_temperature: parseFloat(config.psychologist_temperature),
                     patient_temperature: parseFloat(config.patient_temperature)
                 })
@@ -2120,10 +2133,12 @@ El paciente NO debe mencionar que "pasó tiempo" explícitamente, solo debe comp
                             <label style={{ marginBottom: '0.25rem' }}>Modelo de Análisis</label>
                             <select
                                 value={analysisModel}
-                                onChange={e => setAnalysisModel(e.target.value)}
+                                onChange={e => {
+                                    setAnalysisModel(e.target.value);
+                                    localStorage.setItem('lastAnalysisModel', e.target.value);
+                                }}
                                 style={{ padding: '0.5rem' }}
                             >
-                                <option value="">Selecciona un modelo para análisis...</option>
                                 {models.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
                         </div>

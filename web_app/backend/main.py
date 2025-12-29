@@ -82,6 +82,32 @@ class GenerateProfileRequest(BaseModel):
 # Removing Duplicate Class Definition if it exists in the original file, but here just redefining efficiently
 # The file had duplicate definitions in lines 55 and 72. I will replace the first block and hopefully clean up.
 
+class AnalyzeRequest(BaseModel):
+    filenames: List[str]
+    document_filenames: Optional[List[str]] = []
+    model: str
+    prompt: Optional[str] = "Provide a comprehensive clinical analysis of the simulated interactions."
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 0.9
+    top_k: Optional[int] = 40
+    max_tokens: Optional[int] = 2000
+    presence_penalty: Optional[float] = 0.0
+    frequency_penalty: Optional[float] = 0.0
+
+class AnalysisChatRequest(BaseModel):
+    message: str
+    history: List[Dict[str, str]]
+    interaction_filenames: List[str] = []
+    document_filenames: Optional[List[str]] = []
+    model: str
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 0.9
+    top_k: Optional[int] = 40
+    max_tokens: Optional[int] = 1000
+    presence_penalty: Optional[float] = 0.0
+    frequency_penalty: Optional[float] = 0.0
+
 @app.get("/api/models")
 def get_models():
     return {"models": orchestrator.list_models()}
